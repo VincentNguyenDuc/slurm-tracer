@@ -1,0 +1,18 @@
+#!/bin/bash
+set -e
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
+# Format all source files
+make -C "$REPO_ROOT" format
+
+# Re-stage any previously staged files that the formatter modified.
+# Only touches files already in the index to avoid promoting unstaged hunks.
+STAGED=$(git diff --cached --name-only)
+MODIFIED=$(git diff --name-only)
+
+for f in $STAGED; do
+    if echo "$MODIFIED" | grep -qxF "$f"; then
+        git add "$f"
+    fi
+done
