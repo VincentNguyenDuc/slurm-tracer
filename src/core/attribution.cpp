@@ -59,7 +59,7 @@ std::optional<uint32_t> parse_numeric_suffix(const std::string& seg, const char*
 }
 
 bool is_dir(const std::string& path) {
-    struct stat st {};
+    struct stat st{};
     return ::stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
 }
 
@@ -210,7 +210,7 @@ bool CgroupResolver::start() {
 }
 
 void CgroupResolver::add_dir(const std::string& abs_path) {
-    struct stat st {};
+    struct stat st{};
     if (::stat(abs_path.c_str(), &st) != 0)
         return;
 
