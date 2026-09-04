@@ -1,7 +1,5 @@
 # slurm-tracer — Design
 
-Status: draft, M0 (toolchain) implemented.
-
 ## 1. Why
 
 Slurm already accounts jobs. `jobacct_gather/cgroup` samples cgroup counters on
@@ -71,6 +69,13 @@ which is the inode number of the cgroup directory. It is a field read — no loc
 task-struct walk, safe in any context. Every probe stamps it on every record. That is
 the *only* attribution work done in kernel space.
 
+The helper only answers for *the running task*, though, which is not always the
+record's subject: a scheduler hook fires on the waker, not the woken, and on the
+outgoing task, not the incoming one. A probe in that position reads the same cgroup
+id straight off the task it actually cares about instead of the helper. Either way
+the kernel side hands userspace one opaque id and nothing else — which task it came
+from is the probe's problem, not the resolver's.
+
 Userspace turns that id into a job. Slurm's cgroup/v2 hierarchy (22.05+, systemd
 integration) looks like:
 
@@ -115,9 +120,9 @@ the sink. Never in the poll loop.
 
 ## 5. Probe module contract
 
-A probe contributes one `.bpf.c` (compiled to a skeleton by `add_bpf_program()`), one
-C++ class, and event structs that begin with `st_event_hdr` so the core can demux a
-ring buffer without knowing the payload.
+A probe contributes one `.bpf.c`, one C++ class, and event or map-value structs
+private to its own directory — the core never includes them, and demuxes a ring
+buffer knowing only that every event starts with `st_event_hdr`.
 
 ```cpp
 class Probe {
@@ -125,23 +130,27 @@ public:
     virtual ~Probe() = default;
     virtual std::string_view name() const = 0;      // "proc_lifecycle"
 
-    virtual bool open(const Config&) = 0;           // skeleton open, set rodata knobs
+    virtual bool open(const ComponentConfig&) = 0;  // skeleton open, set rodata knobs
     virtual bool load()  = 0;                       // the verifier runs here
     virtual bool attach() = 0;
     virtual void detach() = 0;
 
     // Event-driven probes hand the core a ring buffer to poll.
     virtual int  ring_fd() const { return -1; }
-    virtual void on_event(const void* data, size_t len, RecordSink&) = 0;
+    virtual void on_event(const void* data, size_t len, RecordEmitter&) = 0;
 
-    // Aggregating probes flush kernel-side maps on the interval instead.
-    virtual void poll(Clock::time_point now, RecordSink&) {}
+    // Aggregating probes leave on_event() empty; the core calls this on the
+    // same cadence records are flushed to sinks instead. An aggregate is only
+    // ever as fresh as the next flush — that's the shape, not a bug.
+    virtual void poll(RecordEmitter&) {}
 };
 ```
 
-Registration is a static registry keyed by name (`REGISTER_PROBE(ProcLifecycle)` in
-each probe's `.cpp`), so adding a probe means adding two files and one
-`add_bpf_program()` line — no edits to core.
+A probe registers itself by name from its own `.cpp` (`r.probes.add("name", ...)`,
+called from a generated manifest that names every plugin the build contains) — so
+adding a probe is two new files, one `add_st_probe()` line in the probe's own
+`CMakeLists.txt`, and no edits to core. See [registry.h](../src/core/registry.h)
+for why this is a generated manifest rather than a static initialiser.
 
 **Failure isolation is a requirement, not a nicety.** A probe that fails to load —
 missing tracepoint, verifier rejection, kernel too old — is disabled with a warning
@@ -164,7 +173,9 @@ Two data shapes, and picking wrong is how eBPF tooling destroys a cluster.
 
 **Rule: if it can exceed ~10⁴/s per node, aggregate in the kernel.** Never stream
 per-syscall or per-packet events. Latency distributions go in log₂-bucketed histogram
-maps keyed by cgroup id, flushed on the poll interval.
+maps keyed by cgroup id, flushed on the poll interval — `sched_latency` (run-queue
+wait time) is the first probe built this way; `bio`, `tcp` and `oom` are the same
+shape, not yet built.
 
 ## 7. Configuration
 
@@ -208,8 +219,9 @@ which keeps the attribution cache warm and avoids a gap in coverage.
 class Sink {
 public:
     virtual ~Sink() = default;
-    virtual void write(std::span<const Record>) = 0;  // always batched
-    virtual void flush() = 0;
+    virtual void write(std::vector<Record> batch) = 0;  // always batched
+    virtual void flush() = 0;                            // drain queued batches
+    virtual uint64_t dropped() const = 0;                // overflow, not errors
 };
 ```
 

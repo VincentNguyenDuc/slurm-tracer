@@ -9,10 +9,6 @@ job/step/task, and streams it somewhere useful.
 
 ## Layout
 
-Core is `src/core` and `src/runtime`; everything optional is a plugin under
-`src/plugins`. Headers sit next to their sources, and `src/` is the only include
-root — so every include is layer-qualified, e.g. `#include "core/record.h"`.
-
 ```
 src/core/            record model, attribution, sink interface. No libbpf, so
                      tests exercise it without CAP_BPF.
@@ -21,6 +17,8 @@ src/plugins/probes/  one directory per probe: its .bpf.c, its event struct,
                      its userspace class
 src/plugins/sinks/   one directory per output
 cmake/BpfProgram.cmake   compiles *.bpf.c and generates libbpf skeletons
+cmake/StPlugin.cmake     add_st_probe()/add_st_sink(), generates the registry
+integrations/        end-to-end tests against a real Slurm cluster
 docs/DESIGN.md       architecture, attribution model, roadmap
 ```
 
@@ -30,19 +28,18 @@ nesting, is what keeps the split real.
 
 ## Adding a probe
 
-1. Create `src/plugins/probes/<name>/` holding `<name>.bpf.c` and `<name>_events.h`.
-   Every event begins with `struct st_event_hdr` (see
-   [src/core/events.h](src/core/events.h)), which carries the cgroup id used for job
-   attribution. The probe's own event struct and its `type` values stay in its
-   directory — they are not shared.
-2. Register it in [CMakeLists.txt](CMakeLists.txt):
+1. Create `src/plugins/probes/<name>/` holding `<name>.bpf.c`, `<name>_events.h`,
+   and a `probe.cpp` implementing `Probe` (`core/probe.h`). Every event begins
+   with `struct st_event_hdr` (see [src/core/events.h](src/core/events.h)),
+   which carries the cgroup id used for job attribution — the probe's own event
+   struct and `type` values stay in its directory, not shared.
+2. Give it its own `CMakeLists.txt` (`add_st_probe(<name> SOURCES probe.cpp BPF
+   <name>.bpf.c)`) and one `add_subdirectory(probes/<name>)` line in
+   [src/plugins/CMakeLists.txt](src/plugins/CMakeLists.txt).
+3. Register it from `probe.cpp` with `register_<name>(Registries&)`; the build
+   generates the manifest that calls it, so nothing in core ever names a probe.
 
-   ```cmake
-   add_bpf_program(<name> SOURCE src/plugins/probes/<name>/<name>.bpf.c INCLUDES src)
-   ```
-
-3. Link `bpf::<name>` and `#include "<name>.skel.h"`.
-
-> Being reworked: probes and sinks are becoming registry-driven plugins, after
-> which step 2 becomes an `add_st_probe()` call in the probe's own
-> `CMakeLists.txt`. See [docs/DESIGN.md](docs/DESIGN.md) §5.
+No other file changes — that's the plugin contract in
+[docs/DESIGN.md](docs/DESIGN.md) §5. `sched_latency` (aggregate) and
+`proc_lifecycle` (event-driven) are the two probes that exist today, and
+between them cover both shapes in §6.
