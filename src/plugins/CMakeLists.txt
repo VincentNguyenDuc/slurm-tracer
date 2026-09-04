@@ -5,4 +5,5 @@
 # touches. Nothing in src/core or src/runtime may name a plugin.
 
 add_subdirectory(probes/proc_lifecycle)
+add_subdirectory(sinks/null)
 add_subdirectory(sinks/stdout_json)
