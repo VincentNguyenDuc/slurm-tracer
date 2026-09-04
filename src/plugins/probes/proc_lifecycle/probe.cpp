@@ -6,10 +6,10 @@
 
 #include <memory>
 
+#include "core/bpf_probe.h"
 #include "core/registry.h"
 #include "plugins/probes/proc_lifecycle/translate.h"
 #include "proc_lifecycle.skel.h"
-#include "runtime/bpf_probe.h"
 
 namespace slurm_tracer {
 namespace {

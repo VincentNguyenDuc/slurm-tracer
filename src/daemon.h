@@ -14,11 +14,9 @@
 #include "core/probe.h"
 #include "core/registry.h"
 #include "core/sink.h"
-#include "runtime/event_loop.h"
+#include "event_loop.h"
 
 namespace slurm_tracer {
-
-class CgroupResolver;
 
 class Daemon {
 public:

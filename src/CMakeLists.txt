@@ -16,14 +16,6 @@ add_library(st_core STATIC
 target_include_directories(st_core PUBLIC ${ST_INCLUDE_ROOT})
 target_link_libraries(st_core PUBLIC Threads::Threads)
 
-# Runtime. The only code that links libbpf, which is what keeps st_core (and so
-# the core tests) free of it.
-add_library(st_runtime STATIC
-    runtime/daemon.cpp
-    runtime/event_loop.cpp
-)
-target_link_libraries(st_runtime PUBLIC st_core PkgConfig::LIBBPF)
-
 # Plugins declare themselves via add_st_probe()/add_st_sink(); the manifest that
 # registers them is generated from that set.
 add_subdirectory(plugins)
@@ -31,11 +23,12 @@ st_generate_plugin_manifest(ST_MANIFEST_SOURCE ST_PLUGIN_TARGETS)
 
 add_executable(slurm-tracer
     main.cpp
+    daemon.cpp
+    event_loop.cpp
     ${ST_MANIFEST_SOURCE}
 )
 target_link_libraries(slurm-tracer
     PRIVATE
-        st_runtime
         ${ST_PLUGIN_TARGETS}
 )
 

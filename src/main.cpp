@@ -15,7 +15,7 @@
 #include <string>
 
 #include "core/config.h"
-#include "runtime/daemon.h"
+#include "daemon.h"
 
 namespace {
 
