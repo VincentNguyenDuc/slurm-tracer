@@ -38,6 +38,7 @@ private:
     void start_sinks();
     void start_probes();
     void retry_discovery();
+    void poll_probes();
     void report_shutdown() const;
 
     Config config_;

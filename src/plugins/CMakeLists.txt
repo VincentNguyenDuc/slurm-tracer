@@ -5,5 +5,6 @@
 # touches. Nothing in src/core may name a plugin.
 
 add_subdirectory(probes/proc_lifecycle)
+add_subdirectory(probes/sched_latency)
 add_subdirectory(sinks/null)
 add_subdirectory(sinks/stdout_json)

@@ -20,7 +20,7 @@ wait_for_binary
 /workspace/build/docker/slurm-tracer \
     --cluster docker-test \
     --node "$NODE" \
-    --probes proc_lifecycle \
+    --probes proc_lifecycle,sched_latency \
     --sinks stdout_json \
     --verbose \
     >>"/var/log/slurm-tracer/${NODE}.jsonl" 2>>"/var/log/slurm-tracer/${NODE}.log" &

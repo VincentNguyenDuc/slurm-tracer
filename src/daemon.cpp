@@ -148,6 +148,7 @@ int Daemon::run(const volatile std::sig_atomic_t& stop) {
 
     int rc = EXIT_SUCCESS;
     auto last_discovery = std::chrono::steady_clock::now();
+    auto last_probe_poll = std::chrono::steady_clock::now();
 
     while (stop == 0) {
         if (!loop_.poll(kPollTimeout)) {
@@ -164,6 +165,17 @@ int Daemon::run(const volatile std::sig_atomic_t& stop) {
             retry_discovery();
         }
 
+        // Aggregating probes (DESIGN §6) flush their kernel-side maps here,
+        // once per interval, rather than being driven by the ring-buffer
+        // poll above. Reusing flush_interval rather than adding a second
+        // "poll_interval" knob: there is no reason an aggregate should be
+        // read on a different cadence than the batch it is about to ride out
+        // in.
+        if (now - last_probe_poll >= config_.flush_interval) {
+            last_probe_poll = now;
+            poll_probes();
+        }
+
         // A partial batch must not sit indefinitely on a quiet node.
         pipeline_->tick(now);
     }
@@ -171,6 +183,11 @@ int Daemon::run(const volatile std::sig_atomic_t& stop) {
     pipeline_->flush();
     report_shutdown();
     return rc;
+}
+
+void Daemon::poll_probes() {
+    for (const auto& probe : probes_)
+        probe->poll(*pipeline_);
 }
 
 void Daemon::report_shutdown() const {

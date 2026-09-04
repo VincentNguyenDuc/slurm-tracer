@@ -112,24 +112,25 @@ wait_for_attribution
 # job creates the nested job_/step_/task_ directories it needs to catch.
 sleep 3
 
-log "submitting a 2-node job"
+FAIL=0
+
+log "submitting a 2-node job (exercises proc_lifecycle)"
 JOB_OUTPUT="$(docker compose exec -T ctld srun --nodes=2 --ntasks-per-node=1 --partition=debug --time=2 \
     bash -c 'echo "JOBID=$SLURM_JOB_ID NODE=$SLURMD_NODENAME"; sleep 1; /bin/true')"
 echo "$JOB_OUTPUT"
 
-JOB_ID="$(printf '%s\n' "$JOB_OUTPUT" | grep -oE 'JOBID=[0-9]+' | head -1 | cut -d= -f2)"
-if [ -z "${JOB_ID:-}" ]; then
+JOB1_ID="$(printf '%s\n' "$JOB_OUTPUT" | grep -oE 'JOBID=[0-9]+' | head -1 | cut -d= -f2)"
+if [ -z "${JOB1_ID:-}" ]; then
     log "FAIL: could not determine job id from srun output"
     exit 1
 fi
-log "job id: $JOB_ID"
+log "job id: $JOB1_ID"
 
 # flush_interval defaults to 1s (src/core/config.h) and the resolver's inotify
 # watch needs a moment to notice the new job cgroup; give both a beat.
 sleep 3
 
-log "checking slurm-tracer output for job $JOB_ID"
-FAIL=0
+log "checking proc_lifecycle output for job $JOB1_ID"
 for node in "${NODES[@]}"; do
     f="out/${node}/${node}.jsonl"
     if [ ! -s "$f" ]; then
@@ -137,9 +138,9 @@ for node in "${NODES[@]}"; do
         FAIL=1
         continue
     fi
-    matches="$(jq -c --argjson jid "$JOB_ID" 'select(.job_id == $jid)' "$f" 2>/dev/null || true)"
+    matches="$(jq -c --argjson jid "$JOB1_ID" 'select(.job_id == $jid and .probe == "proc_lifecycle")' "$f" 2>/dev/null || true)"
     if [ -z "$matches" ]; then
-        log "FAIL: no record on $node attributed to job $JOB_ID"
+        log "FAIL: no proc_lifecycle record on $node attributed to job $JOB1_ID"
         log "  sample of what $node did emit:"
         tail -5 "$f" | sed 's/^/    /'
         FAIL=1
@@ -148,13 +149,67 @@ for node in "${NODES[@]}"; do
     exec_seen="$(printf '%s\n' "$matches" | jq -s 'any(.[]; .event_type == "exec")')"
     exit_seen="$(printf '%s\n' "$matches" | jq -s 'any(.[]; .event_type == "exit")')"
     if [ "$exec_seen" = "true" ] && [ "$exit_seen" = "true" ]; then
-        log "PASS: $node emitted exec+exit for job $JOB_ID"
+        log "PASS: $node emitted exec+exit for job $JOB1_ID"
     else
-        log "FAIL: $node missing exec ($exec_seen) or exit ($exit_seen) for job $JOB_ID"
+        log "FAIL: $node missing exec ($exec_seen) or exit ($exit_seen) for job $JOB1_ID"
         printf '%s\n' "$matches" | sed 's/^/    /'
         FAIL=1
     fi
 done
+
+# A bigger, deliberately oversubscribed workload to give sched_latency (an
+# aggregating probe -- see docs/DESIGN.md §6) something to actually bucket.
+# `srun --overcommit` only oversubscribes a *step* beyond its allocation's
+# CPU count, not a fresh allocation request -- asking a plain srun for more
+# tasks than the node has CPUs fails allocation outright ("never runnable in
+# partition"), --overcommit or not. So this allocates 2 nodes at their real
+# (1 CPU each) size with salloc, then runs the oversubscribed step inside
+# that allocation. Each of the 32 tasks per node spins on the CPU for a
+# couple of seconds, so real run-queue contention happens regardless of how
+# many cores the host running this test actually has.
+log "submitting an oversubscribed 2-node workload (exercises sched_latency)"
+JOB2_OUTPUT="$(docker compose exec -T ctld bash -c '
+    salloc --nodes=2 --partition=debug --time=1 \
+        srun --overcommit --ntasks-per-node=32 \
+            bash -c "echo JOBID=\$SLURM_JOB_ID NODE=\$SLURMD_NODENAME; timeout 2 yes >/dev/null"
+' 2>&1 || true)"
+echo "$JOB2_OUTPUT"
+JOB2_ID="$(printf '%s\n' "$JOB2_OUTPUT" | grep -oE 'JOBID=[0-9]+' | head -1 | cut -d= -f2)"
+if [ -z "${JOB2_ID:-}" ]; then
+    log "FAIL: could not determine job id for the oversubscribed workload"
+    FAIL=1
+else
+    log "job id: $JOB2_ID"
+fi
+
+# sched_latency is flushed on config_.flush_interval (default 1s, see
+# src/daemon.cpp's poll_probes()); give it a couple of intervals after the
+# job finishes.
+sleep 3
+
+if [ -n "${JOB2_ID:-}" ]; then
+    log "checking sched_latency output for job $JOB2_ID"
+    for node in "${NODES[@]}"; do
+        f="out/${node}/${node}.jsonl"
+        matches="$(jq -c --argjson jid "$JOB2_ID" \
+            'select(.job_id == $jid and .probe == "sched_latency")' "$f" 2>/dev/null || true)"
+        if [ -z "$matches" ]; then
+            log "FAIL: no sched_latency record on $node attributed to job $JOB2_ID"
+            FAIL=1
+            continue
+        fi
+        log "PASS: $node emitted sched_latency histogram buckets for job $JOB2_ID"
+        log "  run-queue latency histogram on $node (us range -> event count, summed across tasks):"
+        printf '%s\n' "$matches" | jq -s -r '
+            group_by(.attrs.bucket_us_lo | tonumber)
+            | map({lo: (.[0].attrs.bucket_us_lo | tonumber),
+                   hi: (.[0].attrs.bucket_us_hi | tonumber),
+                   n: (map(.value) | add)})
+            | sort_by(.lo)
+            | .[] | "    [\(.lo)-\(.hi)) us: \(.n)"
+        '
+    done
+fi
 
 log "merging per-node output into out/combined.jsonl and out/combined.csv"
 per_node_files=()
@@ -175,5 +230,5 @@ if [ "$FAIL" -ne 0 ]; then
     exit 1
 fi
 
-log "PASS: all nodes attributed job $JOB_ID correctly"
+log "PASS: proc_lifecycle attributed job $JOB1_ID and sched_latency attributed job $JOB2_ID correctly"
 log "combined output: out/combined.jsonl, out/combined.csv"

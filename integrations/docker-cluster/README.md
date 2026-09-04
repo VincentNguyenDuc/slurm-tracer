@@ -37,17 +37,29 @@ Slurm, munge) lives in the image.
    on the host.
 4. Waits for both nodes to register as `idle`, then for both tracers to log
    that they found the Slurm cgroup scope (`attribution: cgroup root
-   appeared...`) -- see "Timing" below for why that's a separate wait.
+   appeared...`) -- nodes going `idle` says nothing about whether slurm-tracer
+   has attached yet, and a job submitted in that gap comes back completely
+   unattributed (`src/daemon.cpp`'s `kDiscoveryRetry` is 5s). A few seconds'
+   settle time after that message is also given before submitting anything,
+   since the resolver still needs to notice the job's own cgroup directories
+   as they're created.
 5. Submits `srun --nodes=2 --ntasks-per-node=1 ...` and reads back the job id
    it printed.
 6. Checks `out/c1/c1.jsonl` and `out/c2/c2.jsonl` for records with that
-   `job_id`, and that both an `exec` and an `exit` event were captured.
-7. Merges the per-node output into `out/combined.jsonl` (all records,
+   `job_id`, and that both an `exec` and an `exit` event were captured
+   (`proc_lifecycle`).
+7. Submits a second, deliberately oversubscribed workload -- 32 tasks per
+   node against a node configured with 1 CPU -- to give the aggregating
+   `sched_latency` probe (docs/DESIGN.md §6) real run-queue contention to
+   bucket, and checks that its histogram records show up attributed to that
+   job. Prints the merged per-node histogram so a human can see the actual
+   latency distribution, not just pass/fail.
+8. Merges the per-node output into `out/combined.jsonl` (all records,
    time-sorted) and `out/combined.csv` (same, flattened to the `Record`
    fields in `src/core/record.h` -- `attrs` excluded since it's a map).
    Written whether the checks passed or not, so a failure still leaves
    something to inspect.
-8. Tears the cluster down (`docker compose down -v`), unless `--keep-up` was
+9. Tears the cluster down (`docker compose down -v`), unless `--keep-up` was
    given.
 
 
@@ -56,7 +68,13 @@ Slurm, munge) lives in the image.
 ```
 Dockerfile                 One image for every role (controller, worker, builder).
 docker-compose.yml         ctld (controller) + c1, c2 (workers) + builder (one-shot).
-conf/slurm.conf            Minimal cluster config; node names match the compose services.
+conf/slurm.conf            Minimal cluster config; node names match the compose
+                           services. debug partition is OverSubscribe=FORCE:32
+                           so the sched_latency workload can put more tasks on
+                           a node than it has CPUs -- plain `srun --overcommit`
+                           can't do that for a fresh allocation, only for a
+                           step inside one already sized normally, which is
+                           why test.sh's job 2 wraps it in a salloc.
 conf/cgroup.conf           cgroup/v2, IgnoreSystemd=yes.
 scripts/build.sh           Builds slurm-tracer into build/docker.
 scripts/common.sh          setup_munge, setup_cgroup_delegation, wait_for_binary.
