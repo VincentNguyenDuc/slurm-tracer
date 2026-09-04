@@ -82,6 +82,8 @@ std::string to_json(const Record& r) {
     write_string(os, first, "cluster", r.cluster);
     write_string(os, first, "probe", r.probe);
 
+    write_key(os, first, "cgroup_id");
+    os << r.cgroup_id;
     write_opt(os, first, "job_id", r.job_id);
     write_opt(os, first, "step_id", r.step_id);
     write_opt(os, first, "task_id", r.task_id);

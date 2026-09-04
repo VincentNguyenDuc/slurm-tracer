@@ -24,6 +24,12 @@ struct Record {
     // Attribution. Empty optionals mean "this event could not be tied to a
     // Slurm job" — emitted anyway, because a rising unattributed rate is the
     // signal that the resolver is misconfigured.
+    //
+    // cgroup_id is what the probe stamps and what the resolver consumes; the
+    // rest the pipeline fills in. It is a real field rather than an attrs entry
+    // because every probe sets it on every record, and stringifying it into
+    // attrs cost an allocation per event.
+    uint64_t cgroup_id = 0;
     std::optional<uint32_t> job_id;
     std::optional<std::string> step_id; // "0", "batch", "extern", "interactive"
     std::optional<uint32_t> task_id;
