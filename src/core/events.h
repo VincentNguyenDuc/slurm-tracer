@@ -6,7 +6,7 @@
 // straight out of the ring buffer.
 //
 // Only what every probe shares belongs here. A probe's own event struct lives
-// beside its .bpf.c — see plugins/probes/proc_lifecycle/proc_lifecycle_events.h.
+// beside its .bpf.c, in that probe's own directory.
 
 #ifndef SLURM_TRACER_EVENTS_H
 #define SLURM_TRACER_EVENTS_H

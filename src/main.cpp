@@ -1,8 +1,9 @@
 // slurm-tracer: eBPF observability for Slurm compute nodes.
 //
-// M1: the proc_lifecycle probe streams exec/exit events out of a BPF ring
-// buffer; the resolver turns each event's cgroup id into a Slurm job/step/task;
-// the result is batched into slurm_tracer::Record and fanned out to the configured sinks.
+// The daemon owns no probe and no sink. It builds both from the registry, gives
+// each probe a ring buffer, and runs the poll loop; the resolver turns each
+// event's cgroup id into a Slurm job/step/task and the pipeline fans records out
+// to the sinks. Which plugins exist is decided by the build, not by this file.
 // See docs/DESIGN.md.
 
 #include <bpf/libbpf.h>
@@ -22,13 +23,9 @@
 
 #include "core/attribution.h"
 #include "core/pipeline.h"
-#include "core/record.h"
+#include "core/probe.h"
 #include "core/registry.h"
 #include "core/sink.h"
-#include "proc_lifecycle.skel.h"
-// Phase 1 leaves the probe wired directly into the daemon; phase 5 moves this
-// translation into the probe itself and this include goes away.
-#include "plugins/probes/proc_lifecycle/proc_lifecycle_events.h"
 
 namespace {
 
@@ -121,58 +118,16 @@ std::string hostname() {
     return buf;
 }
 
-// Translates one proc_lifecycle event into a record.
-//
-// Everything here is knowledge only this probe has: its own wire struct, its own
-// hdr.type values, and how the kernel packs an exit code. Attribution, the
-// uid->user lookup, the wall-clock conversion and the node/cluster stamp are the
-// pipeline's job. Phase 5 moves this function into the probe itself.
-bool translate(const st_proc_event& e, slurm_tracer::Record& r) {
-    switch (e.hdr.type) {
-    case ST_EVENT_EXEC:
-        r.event_type = "exec";
-        r.metric = "proc.exec";
-        r.value = 1.0;
-        r.unit = "count";
-        break;
-    case ST_EVENT_EXIT:
-        r.event_type = "exit";
-        r.metric = "proc.exit";
-        // The kernel's exit_code packs the wait(2) status: high byte is the
-        // exit status, low 7 bits the terminating signal.
-        r.value = static_cast<double>((e.exit_code >> 8) & 0xff);
-        r.unit = "exit_status";
-        if (const int sig = e.exit_code & 0x7f; sig != 0)
-            r.attrs.emplace_back("signal", std::to_string(sig));
-        break;
-    default:
-        std::cerr << "unknown event type " << e.hdr.type << "\n";
-        return false;
-    }
-
-    r.probe = "proc_lifecycle";
-    r.ts_ns = e.hdr.ts_ns; // monotonic; the pipeline converts to wall clock
-    r.cgroup_id = e.hdr.cgroup_id;
-    r.uid = e.hdr.uid;
-    r.pid = e.hdr.pid;
-    r.tid = e.hdr.tid;
-    r.comm.assign(e.comm, ::strnlen(e.comm, ST_COMM_LEN));
-    return true;
-}
+// Ring buffer callback. The daemon does not know what the bytes mean; the probe
+// that owns the buffer does the translating.
+struct EventContext {
+    slurm_tracer::Probe* probe;
+    slurm_tracer::Pipeline* pipeline;
+};
 
 int handle_event(void* raw_ctx, void* data, size_t size) {
-    auto& pipeline = *static_cast<slurm_tracer::Pipeline*>(raw_ctx);
-
-    if (size < sizeof(st_proc_event)) {
-        std::cerr << "short event: " << size << " bytes\n";
-        return 0;
-    }
-
-    slurm_tracer::Record r;
-    if (!translate(*static_cast<const st_proc_event*>(data), r))
-        return 0;
-
-    pipeline.emit(std::move(r));
+    auto& ctx = *static_cast<EventContext*>(raw_ctx);
+    ctx.probe->on_event(data, size, *ctx.pipeline);
     return 0;
 }
 
@@ -209,36 +164,26 @@ int main(int argc, char** argv) {
                      "until then\n";
     }
 
-    proc_lifecycle* skel = proc_lifecycle__open();
-    if (!skel) {
-        std::cerr << "failed to open BPF skeleton\n";
-        return EXIT_FAILURE;
-    }
-    if (proc_lifecycle__load(skel)) {
-        std::cerr << "failed to load BPF programs (need CAP_BPF and CAP_PERFMON)\n";
-        proc_lifecycle__destroy(skel);
-        return EXIT_FAILURE;
-    }
-    if (proc_lifecycle__attach(skel)) {
-        std::cerr << "failed to attach BPF programs\n";
-        proc_lifecycle__destroy(skel);
-        return EXIT_FAILURE;
-    }
-
-    // Sinks come from the registry, so the daemon never names a concrete one.
-    // The registry itself is populated by the generated manifest.
+    // Probes and sinks both come from the registry, so the daemon never names a
+    // concrete one. The registry itself is populated by the generated manifest.
     slurm_tracer::Registries registries;
     slurm_tracer::register_all(registries);
 
-    const std::string sink_name = "stdout_json";
-    std::unique_ptr<slurm_tracer::Sink> sink =
-        registries.sinks.create(sink_name, slurm_tracer::ComponentConfig{});
-    if (!sink) {
-        std::cerr << "no sink named " << sink_name << " in this build; have:";
-        for (const std::string& n : registries.sinks.names())
-            std::cerr << ' ' << n;
-        std::cerr << "\n";
-        proc_lifecycle__destroy(skel);
+    // Everything compiled into this build runs. Which plugins that is, is a
+    // build-time choice (-DST_PLUGINS=...); phase 6 makes it a runtime one, read
+    // from configuration.
+    const slurm_tracer::ComponentConfig default_config;
+
+    std::vector<std::unique_ptr<slurm_tracer::Sink>> sinks;
+    std::vector<slurm_tracer::Sink*> sink_ptrs;
+    for (const std::string& name : registries.sinks.names()) {
+        if (auto s = registries.sinks.create(name, default_config)) {
+            sink_ptrs.push_back(s.get());
+            sinks.push_back(std::move(s));
+        }
+    }
+    if (sinks.empty()) {
+        std::cerr << "no sinks in this build; nothing would be written\n";
         return EXIT_FAILURE;
     }
 
@@ -249,14 +194,50 @@ int main(int argc, char** argv) {
     popt.flush_interval = std::chrono::milliseconds(opt.flush_ms);
     popt.verbose = opt.verbose;
 
-    slurm_tracer::Pipeline pipeline(popt, {sink.get()});
+    slurm_tracer::Pipeline pipeline(popt, sink_ptrs);
     pipeline.set_resolver(resolver.get());
 
-    ring_buffer* rb =
-        ring_buffer__new(bpf_map__fd(skel->maps.events), handle_event, &pipeline, nullptr);
-    if (!rb) {
-        std::cerr << "failed to create ring buffer\n";
-        proc_lifecycle__destroy(skel);
+    // One ring buffer per probe, per DESIGN §5: a chatty probe must not be able
+    // to starve a quiet one. libbpf polls them all through a single epoll set.
+    std::vector<std::unique_ptr<slurm_tracer::Probe>> probes;
+    std::vector<std::unique_ptr<EventContext>> contexts; // stable addresses for libbpf
+    ring_buffer* rb = nullptr;
+
+    for (const std::string& name : registries.probes.names()) {
+        auto probe = registries.probes.create(name, default_config);
+        if (!probe)
+            continue;
+
+        // A probe that cannot load is disabled on its own; the daemon keeps
+        // running with the rest. Clusters are heterogeneous, and a node with an
+        // older kernel should lose one probe rather than all observability.
+        if (!probe->open(default_config) || !probe->load() || !probe->attach()) {
+            std::cerr << "probe " << name << ": disabled\n";
+            continue;
+        }
+
+        const int fd = probe->ring_fd();
+        if (fd >= 0) {
+            contexts.push_back(std::unique_ptr<EventContext>(new EventContext{
+                probe.get(), &pipeline}));
+            void* ctx = contexts.back().get();
+
+            const bool ok = rb == nullptr
+                                ? (rb = ring_buffer__new(fd, handle_event, ctx, nullptr)) != nullptr
+                                : ring_buffer__add(rb, fd, handle_event, ctx) == 0;
+            if (!ok) {
+                std::cerr << "probe " << name << ": failed to set up ring buffer, disabled\n";
+                contexts.pop_back();
+                probe->detach();
+                continue;
+            }
+        }
+
+        probes.push_back(std::move(probe));
+    }
+
+    if (probes.empty()) {
+        std::cerr << "no probes running; nothing to collect\n";
         return EXIT_FAILURE;
     }
 
@@ -266,11 +247,15 @@ int main(int argc, char** argv) {
     int rc = EXIT_SUCCESS;
     auto last_discovery = std::chrono::steady_clock::now();
     while (!g_stop) {
-        const int err = ring_buffer__poll(rb, 100 /* ms */);
-        if (err < 0 && err != -EINTR) {
-            std::cerr << "ring buffer poll failed: " << err << "\n";
-            rc = EXIT_FAILURE;
-            break;
+        // rb is null when every running probe aggregates in-kernel rather than
+        // streaming events; the loop still has to tick and flush.
+        if (rb != nullptr) {
+            const int err = ring_buffer__poll(rb, 100 /* ms */);
+            if (err < 0 && err != -EINTR) {
+                std::cerr << "ring buffer poll failed: " << err << "\n";
+                rc = EXIT_FAILURE;
+                break;
+            }
         }
 
         if (resolver)
@@ -306,9 +291,14 @@ int main(int argc, char** argv) {
         std::cerr << ", attribution hits=" << s.hits << " misses=" << s.misses
                   << " stale=" << s.stale << " rescans=" << s.rescans;
     }
-    std::cerr << ", dropped batches=" << sink->dropped() << "\n";
+    uint64_t dropped = 0;
+    for (const auto& s : sinks)
+        dropped += s->dropped();
+    std::cerr << ", dropped batches=" << dropped << "\n";
 
-    ring_buffer__free(rb);
-    proc_lifecycle__destroy(skel);
+    if (rb != nullptr)
+        ring_buffer__free(rb);
+    for (const auto& p : probes)
+        p->detach();
     return rc;
 }

@@ -16,13 +16,6 @@ add_library(st_core STATIC
 target_include_directories(st_core PUBLIC ${ST_INCLUDE_ROOT})
 target_link_libraries(st_core PUBLIC Threads::Threads)
 
-# proc_lifecycle is still wired straight into the daemon; phase 5 turns it into
-# a plugin and this call becomes an add_st_probe() in its own CMakeLists.txt.
-add_bpf_program(proc_lifecycle
-    SOURCE plugins/probes/proc_lifecycle/proc_lifecycle.bpf.c
-    INCLUDES ${ST_INCLUDE_ROOT}
-)
-
 # Plugins declare themselves via add_st_probe()/add_st_sink(); the manifest that
 # registers them is generated from that set.
 add_subdirectory(plugins)
@@ -36,7 +29,6 @@ target_link_libraries(slurm-tracer
     PRIVATE
         st_core
         ${ST_PLUGIN_TARGETS}
-        bpf::proc_lifecycle
         PkgConfig::LIBBPF
 )
 

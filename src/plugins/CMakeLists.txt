@@ -4,4 +4,5 @@
 # This is the only file outside a plugin's own directory that a new plugin
 # touches. Nothing in src/core or src/runtime may name a plugin.
 
+add_subdirectory(probes/proc_lifecycle)
 add_subdirectory(sinks/stdout_json)
