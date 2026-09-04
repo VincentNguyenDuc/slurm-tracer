@@ -1,0 +1,56 @@
+services:
+  # One-shot: builds slurm-tracer into build/docker on the bind-mounted repo.
+  # Run explicitly (`docker compose run --rm builder`) before `up`, not part
+  # of `up` itself, so the two workers don't race each other through cmake.
+  builder:
+    build: .
+    image: slurm-tracer-test:latest
+    profiles: ["tools"]
+    volumes:
+      - ../..:/workspace
+      - ./scripts:/opt/st/scripts:ro
+    entrypoint: ["/opt/st/scripts/build.sh"]
+
+  ctld:
+    build: .
+    image: slurm-tracer-test:latest
+    hostname: ctld
+    volumes:
+      - ../..:/workspace:ro
+      - ./conf/slurm.conf:/etc/slurm/slurm.conf:ro
+      - ./conf/cgroup.conf:/etc/slurm/cgroup.conf:ro
+      - ./secrets/munge.key:/secrets/munge.key:ro
+      - ./scripts:/opt/st/scripts:ro
+    entrypoint: ["/opt/st/scripts/entrypoint-controller.sh"]
+
+  c1:
+    build: .
+    image: slurm-tracer-test:latest
+    hostname: c1
+    privileged: true # CAP_BPF/CAP_PERFMON for slurm-tracer, cgroup mgmt for slurmd
+    depends_on:
+      - ctld
+    volumes:
+      - ../..:/workspace:ro
+      - ./conf/slurm.conf:/etc/slurm/slurm.conf:ro
+      - ./conf/cgroup.conf:/etc/slurm/cgroup.conf:ro
+      - ./secrets/munge.key:/secrets/munge.key:ro
+      - ./scripts:/opt/st/scripts:ro
+      - ./out/c1:/var/log/slurm-tracer
+    entrypoint: ["/opt/st/scripts/entrypoint-worker.sh"]
+
+  c2:
+    build: .
+    image: slurm-tracer-test:latest
+    hostname: c2
+    privileged: true
+    depends_on:
+      - ctld
+    volumes:
+      - ../..:/workspace:ro
+      - ./conf/slurm.conf:/etc/slurm/slurm.conf:ro
+      - ./conf/cgroup.conf:/etc/slurm/cgroup.conf:ro
+      - ./secrets/munge.key:/secrets/munge.key:ro
+      - ./scripts:/opt/st/scripts:ro
+      - ./out/c2:/var/log/slurm-tracer
+    entrypoint: ["/opt/st/scripts/entrypoint-worker.sh"]

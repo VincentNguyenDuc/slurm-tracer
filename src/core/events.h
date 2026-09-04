@@ -8,8 +8,7 @@
 // Only what every probe shares belongs here. A probe's own event struct lives
 // beside its .bpf.c, in that probe's own directory.
 
-#ifndef SLURM_TRACER_EVENTS_H
-#define SLURM_TRACER_EVENTS_H
+#pragma once
 
 // vmlinux.h already provides the __u*/__s* typedefs when compiling BPF.
 #ifndef __VMLINUX_H__
@@ -32,5 +31,3 @@ struct st_event_hdr {
 // so the core always knows which probe an event came from and never interprets
 // `type` itself — only the owning probe does. A shared enum would mean every new
 // probe editing this file, which is exactly what the plugin split exists to avoid.
-
-#endif // SLURM_TRACER_EVENTS_H
