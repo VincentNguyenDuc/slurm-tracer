@@ -1,0 +1,19 @@
+// GENERATED FILE -- do not edit, and do not commit.
+//
+// Written at configure time by st_generate_plugin_manifest() in
+// cmake/StPlugin.cmake, from the set of plugins the build declared.
+//
+// This is the one place that names every plugin, and it exists so that no
+// hand-written file has to. Each register_<name> below is an undefined symbol
+// the linker must resolve, which is what forces the plugin's translation unit
+// into the binary.
+
+#include "core/registry.h"
+
+namespace slurm_tracer {
+
+@ST_MANIFEST_DECLS@
+void register_all(Registries& r) {
+@ST_MANIFEST_CALLS@}
+
+} // namespace slurm_tracer

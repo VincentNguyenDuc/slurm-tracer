@@ -64,6 +64,12 @@ function(add_bpf_program name)
         list(APPEND include_flags "-I${abs}")
     endforeach()
 
+    # DEPENDS names only ${src}, not ${BPF_VMLINUX_H}: an add_custom_command
+    # OUTPUT rule is visible only in the directory that declared it, and
+    # add_bpf_program() is called from each plugin's own CMakeLists.txt. Naming
+    # the generated header here would ask a subdirectory for a rule it cannot
+    # see ("No rule to make target 'bpf/vmlinux.h'"). Ordering comes from the
+    # add_dependencies() on bpf_vmlinux below instead.
     add_custom_command(
         OUTPUT "${obj}"
         COMMAND "${BPF_CLANG}"
@@ -73,7 +79,7 @@ function(add_bpf_program name)
                 -mcpu=${BPF_CPU}
                 ${include_flags}
                 -c "${src}" -o "${obj}"
-        DEPENDS "${src}" "${BPF_VMLINUX_H}"
+        DEPENDS "${src}"
         COMMENT "Building BPF object ${name}.bpf.o"
         VERBATIM
     )
@@ -87,6 +93,9 @@ function(add_bpf_program name)
     )
 
     add_custom_target(${name}_bpf DEPENDS "${skel}")
+    # vmlinux.h must exist before the object below it compiles. A target-level
+    # dependency, because the file-level one does not cross directory scopes.
+    add_dependencies(${name}_bpf bpf_vmlinux)
 
     add_library(bpf_${name} INTERFACE)
     target_include_directories(bpf_${name} INTERFACE "${BPF_GEN_DIR}")

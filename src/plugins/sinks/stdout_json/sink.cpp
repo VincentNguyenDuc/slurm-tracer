@@ -1,6 +1,8 @@
-#include "core/stdout_json_sink.h"
+#include "plugins/sinks/stdout_json/sink.h"
 
 #include <string>
+
+#include "core/registry.h"
 
 namespace slurm_tracer {
 
@@ -78,6 +80,16 @@ void StdoutJsonSink::run() {
     }
 
     drained_cv_.notify_all();
+}
+
+// Called by the generated registry_manifest.cpp. Naming it here and calling it
+// there is what forces this translation unit into the link.
+void register_stdout_json(Registries& r) {
+    r.sinks.add("stdout_json", [](const ComponentConfig& config) -> std::unique_ptr<Sink> {
+        return std::make_unique<StdoutJsonSink>(
+            static_cast<size_t>(config.get_uint("max_queued_batches", 1024)), stdout
+        );
+    });
 }
 
 } // namespace slurm_tracer

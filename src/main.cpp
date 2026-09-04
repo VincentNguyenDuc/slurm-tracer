@@ -23,7 +23,8 @@
 #include "core/attribution.h"
 #include "core/pipeline.h"
 #include "core/record.h"
-#include "core/stdout_json_sink.h"
+#include "core/registry.h"
+#include "core/sink.h"
 #include "proc_lifecycle.skel.h"
 // Phase 1 leaves the probe wired directly into the daemon; phase 5 moves this
 // translation into the probe itself and this include goes away.
@@ -224,7 +225,22 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    slurm_tracer::StdoutJsonSink stdout_sink;
+    // Sinks come from the registry, so the daemon never names a concrete one.
+    // The registry itself is populated by the generated manifest.
+    slurm_tracer::Registries registries;
+    slurm_tracer::register_all(registries);
+
+    const std::string sink_name = "stdout_json";
+    std::unique_ptr<slurm_tracer::Sink> sink =
+        registries.sinks.create(sink_name, slurm_tracer::ComponentConfig{});
+    if (!sink) {
+        std::cerr << "no sink named " << sink_name << " in this build; have:";
+        for (const std::string& n : registries.sinks.names())
+            std::cerr << ' ' << n;
+        std::cerr << "\n";
+        proc_lifecycle__destroy(skel);
+        return EXIT_FAILURE;
+    }
 
     slurm_tracer::Pipeline::Options popt;
     popt.node = opt.node;
@@ -233,7 +249,7 @@ int main(int argc, char** argv) {
     popt.flush_interval = std::chrono::milliseconds(opt.flush_ms);
     popt.verbose = opt.verbose;
 
-    slurm_tracer::Pipeline pipeline(popt, {&stdout_sink});
+    slurm_tracer::Pipeline pipeline(popt, {sink.get()});
     pipeline.set_resolver(resolver.get());
 
     ring_buffer* rb =
@@ -290,7 +306,7 @@ int main(int argc, char** argv) {
         std::cerr << ", attribution hits=" << s.hits << " misses=" << s.misses
                   << " stale=" << s.stale << " rescans=" << s.rescans;
     }
-    std::cerr << ", dropped batches=" << stdout_sink.dropped() << "\n";
+    std::cerr << ", dropped batches=" << sink->dropped() << "\n";
 
     ring_buffer__free(rb);
     proc_lifecycle__destroy(skel);
