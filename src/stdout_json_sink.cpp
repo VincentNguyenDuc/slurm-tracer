@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace st {
+namespace slurm_tracer {
 
 StdoutJsonSink::StdoutJsonSink(size_t max_queued_batches, std::FILE* out)
     : max_queued_(max_queued_batches == 0 ? 1 : max_queued_batches)
@@ -80,4 +80,4 @@ void StdoutJsonSink::run() {
     drained_cv_.notify_all();
 }
 
-} // namespace st
+} // namespace slurm_tracer

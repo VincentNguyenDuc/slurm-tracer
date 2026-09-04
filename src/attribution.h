@@ -13,7 +13,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace st {
+namespace slurm_tracer {
 
 struct Attribution {
     uint32_t job_id = 0;
@@ -102,6 +102,6 @@ private:
 // CLOCK_MONOTONIC nanoseconds — the same clock as bpf_ktime_get_ns().
 uint64_t monotonic_ns();
 
-} // namespace st
+} // namespace slurm_tracer
 
 #endif // SLURM_TRACER_ATTRIBUTION_H

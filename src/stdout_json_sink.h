@@ -10,7 +10,7 @@
 
 #include "sink.h"
 
-namespace st {
+namespace slurm_tracer {
 
 // Writes one JSON object per record to a stream (stdout by default), NDJSON.
 // Trivially debuggable and pipes into any existing log shipper.
@@ -42,6 +42,6 @@ private:
     std::thread worker_;
 };
 
-} // namespace st
+} // namespace slurm_tracer
 
 #endif // SLURM_TRACER_STDOUT_JSON_SINK_H

@@ -85,22 +85,6 @@ integration) looks like:
       slurm/
 ```
 
-Two things about that path are configuration, not constants: `CgroupMountpoint` in
-`cgroup.conf` moves the root, and the scope naming has shifted across releases.
-**Never hard-code the path** — discover it at startup, allow config override, and
-verify against the Slurm version actually deployed.
-
-Verified against slurmd 22.05.8 rather than taken from the documentation:
-
-- The scope is `<node>_slurmstepd.scope` — **the node name comes first**. A glob
-  anchored on `slurmstepd*.scope` matches nothing on a real node, so discovery
-  wildcards both sides.
-- `IgnoreSystemd=yes` changes *who* creates the scope directory (slurmstepd with
-  `mkdir` rather than systemd over dbus), not where it is. It does not, on 22.05,
-  relocate the tree to `<mountpoint>/slurm`.
-- `task_special` is not a task id. It must inherit the step's attribution rather
-  than parse into a bogus `task_id`.
-
 **Resolver**
 
 1. At startup, walk the discovered cgroup root. For each directory, `stat()` it — the
@@ -267,37 +251,3 @@ will fall over.
 `job_id` + `cluster` is the join key back to Slurm's accounting database, so a
 dashboard can put eBPF detail directly beside the official `sacct` record. That join
 is the point of the whole exercise.
-
-## 10. Deployment and safety
-
-- One systemd unit per compute node with
-  `AmbientCapabilities=CAP_BPF CAP_PERFMON`, plus `MemoryMax` and `CPUQuota`. The
-  observability tool must not become the incident.
-- **Overhead budget: < 1% of one core, < 100 MiB RSS.** Measure it, export it, treat a
-  breach as a bug rather than a tuning exercise.
-- CO-RE everywhere, so struct layout drift across kernels is handled at load time.
-  Feature-probe at load; disable what the kernel cannot support.
-- Never block a job: no `bpf_probe_write_user`, no LSM enforcement hooks. A full ring
-  buffer drops and counts.
-
-## 11. Milestones
-
-| | Scope |
-|---|---|
-| **M0** ✅ | Toolchain: CMake BPF/CO-RE pipeline, skeleton generation, `proc_lifecycle` probe, raw event loop |
-| **M1** | Attribution resolver, `Record` model, `stdout_json` sink → real per-job exec/exit stream |
-| **M2** | Config file, probe registry, enable/disable, SIGHUP reload |
-| **M3** | `sched_latency` as the first aggregating probe → exercises both data shapes |
-| **M4** | `http` sink and gateway contract → data landing in the warehouse |
-| **M5** | `bio`, `tcp`, `oom` probes |
-
-## 12. Open questions
-
-- **Slurm version range.** The cgroup layout is stable from 22.05, but the systemd
-  scope naming moved in 23.x. Which versions must one binary support?
-- **Multi-node jobs.** Node-local cgroups cannot correlate ranks across nodes; that
-  needs step start/end from slurmctld. Is cross-node correlation in scope?
-- **Task granularity.** Is per-task (per-rank) attribution needed from the start, or is
-  per-step enough for the first dashboards? Per-rank multiplies cardinality.
-- **RDMA.** With MPI bypassing the TCP stack, is a network probe worth building at all,
-  or does it produce a dashboard that is confidently wrong?

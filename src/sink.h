@@ -15,7 +15,7 @@
 
 #include "record.h"
 
-namespace st {
+namespace slurm_tracer {
 
 class Sink {
 public:
@@ -31,6 +31,6 @@ public:
     virtual uint64_t dropped() const = 0;
 };
 
-} // namespace st
+} // namespace slurm_tracer
 
 #endif // SLURM_TRACER_SINK_H

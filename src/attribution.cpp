@@ -14,7 +14,7 @@
 #include <iostream>
 #include <vector>
 
-namespace st {
+namespace slurm_tracer {
 namespace {
 
 // A rescan is bounded to once per this interval so that a burst of events for
@@ -57,8 +57,8 @@ std::optional<uint32_t> parse_numeric_suffix(const std::string& seg, const char*
 }
 
 bool is_dir(const std::string& path) {
-    struct stat st {};
-    return ::stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+    struct stat slurm_tracer {};
+    return ::stat(path.c_str(), &slurm_tracer) == 0 && S_ISDIR(slurm_tracer.st_mode);
 }
 
 std::string trim(const std::string& s) {
@@ -99,9 +99,10 @@ uint64_t boot_offset_ns() {
 // and missed; timestamping the entry with "now" would make every such entry
 // look newer than the event that found it, and the reuse guard below would
 // reject them all.
-uint64_t created_from_ctime(const struct stat& st) {
-    const uint64_t ctime_realtime = static_cast<uint64_t>(st.st_ctim.tv_sec) * 1000000000ull +
-                                    static_cast<uint64_t>(st.st_ctim.tv_nsec);
+uint64_t created_from_ctime(const struct stat& slurm_tracer) {
+    const uint64_t ctime_realtime =
+        static_cast<uint64_t>(slurm_tracer.st_ctim.tv_sec) * 1000000000ull +
+        static_cast<uint64_t>(slurm_tracer.st_ctim.tv_nsec);
     const uint64_t offset = boot_offset_ns();
     return ctime_realtime > offset ? ctime_realtime - offset : 0;
 }
@@ -231,13 +232,13 @@ bool CgroupResolver::start() {
 }
 
 void CgroupResolver::add_dir(const std::string& abs_path) {
-    struct stat st {};
-    if (::stat(abs_path.c_str(), &st) != 0)
+    struct stat slurm_tracer {};
+    if (::stat(abs_path.c_str(), &slurm_tracer) != 0)
         return;
 
     // The cgroup id *is* the directory's inode number. This is the entire
     // bridge between the kernel-side stamp and Slurm's job identity.
-    const uint64_t cgroup_id = static_cast<uint64_t>(st.st_ino);
+    const uint64_t cgroup_id = static_cast<uint64_t>(slurm_tracer.st_ino);
 
     const std::string relative =
         abs_path.size() > root_.size() ? abs_path.substr(root_.size() + 1) : std::string{};
@@ -245,7 +246,7 @@ void CgroupResolver::add_dir(const std::string& abs_path) {
     if (!attr)
         return; // not job work — slurmstepd's own cgroup, for instance
 
-    const uint64_t created_ns = created_from_ctime(st);
+    const uint64_t created_ns = created_from_ctime(slurm_tracer);
 
     auto it = entries_.find(cgroup_id);
     if (it != entries_.end()) {
@@ -400,4 +401,4 @@ std::optional<Attribution> CgroupResolver::resolve(uint64_t cgroup_id, uint64_t 
     return it->second.attr;
 }
 
-} // namespace st
+} // namespace slurm_tracer

@@ -2,7 +2,7 @@
 //
 // M1: the proc_lifecycle probe streams exec/exit events out of a BPF ring
 // buffer; the resolver turns each event's cgroup id into a Slurm job/step/task;
-// the result is batched into st::Record and fanned out to the configured sinks.
+// the result is batched into slurm_tracer::Record and fanned out to the configured sinks.
 // See docs/DESIGN.md.
 
 #include <bpf/libbpf.h>
@@ -141,9 +141,9 @@ const std::string* lookup_user(uint32_t uid) {
 // Everything the ring buffer callback needs.
 struct Context {
     const Options* opt;
-    st::CgroupResolver* resolver;
-    std::vector<st::Sink*>* sinks;
-    std::vector<st::Record>* batch;
+    slurm_tracer::CgroupResolver* resolver;
+    std::vector<slurm_tracer::Sink*>* sinks;
+    std::vector<slurm_tracer::Record>* batch;
     // BPF stamps CLOCK_MONOTONIC; records carry wall clock so they join against
     // Slurm's accounting database. One offset, sampled at startup.
     uint64_t boot_offset_ns;
@@ -153,7 +153,7 @@ struct Context {
 void ship(Context& ctx) {
     if (ctx.batch->empty())
         return;
-    std::vector<st::Record> batch;
+    std::vector<slurm_tracer::Record> batch;
     batch.swap(*ctx.batch);
     // Every sink gets its own copy; a sink may outlive this call and must not
     // alias another sink's records.
@@ -175,7 +175,7 @@ int handle_event(void* raw_ctx, void* data, size_t size) {
     const auto* e = static_cast<const st_proc_event*>(data);
     ++ctx.events;
 
-    st::Record r;
+    slurm_tracer::Record r;
     r.ts_ns = e->hdr.ts_ns + ctx.boot_offset_ns;
     r.node = ctx.opt->node;
     r.cluster = ctx.opt->cluster;
@@ -250,9 +250,9 @@ int main(int argc, char** argv) {
 
     // Attribution first: if the cgroup root is wrong we want to say so before
     // loading anything into the kernel.
-    std::unique_ptr<st::CgroupResolver> resolver;
-    if (auto root = st::discover_cgroup_root(opt.cgroup_root)) {
-        resolver = std::make_unique<st::CgroupResolver>(*root);
+    std::unique_ptr<slurm_tracer::CgroupResolver> resolver;
+    if (auto root = slurm_tracer::discover_cgroup_root(opt.cgroup_root)) {
+        resolver = std::make_unique<slurm_tracer::CgroupResolver>(*root);
         if (!resolver->start()) {
             resolver.reset();
         } else {
@@ -284,9 +284,9 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    st::StdoutJsonSink stdout_sink;
-    std::vector<st::Sink*> sinks{&stdout_sink};
-    std::vector<st::Record> batch;
+    slurm_tracer::StdoutJsonSink stdout_sink;
+    std::vector<slurm_tracer::Sink*> sinks{&stdout_sink};
+    std::vector<slurm_tracer::Record> batch;
     batch.reserve(opt.batch_size);
 
     Context ctx{};
@@ -294,7 +294,7 @@ int main(int argc, char** argv) {
     ctx.resolver = resolver.get();
     ctx.sinks = &sinks;
     ctx.batch = &batch;
-    ctx.boot_offset_ns = realtime_ns() - st::monotonic_ns();
+    ctx.boot_offset_ns = realtime_ns() - slurm_tracer::monotonic_ns();
 
     ring_buffer* rb = ring_buffer__new(bpf_map__fd(skel->maps.events), handle_event, &ctx, nullptr);
     if (!rb) {
@@ -327,8 +327,8 @@ int main(int argc, char** argv) {
         if (!resolver &&
             std::chrono::duration_cast<std::chrono::seconds>(now - last_discovery).count() >= 5) {
             last_discovery = now;
-            if (auto root = st::discover_cgroup_root(opt.cgroup_root)) {
-                auto candidate = std::make_unique<st::CgroupResolver>(*root);
+            if (auto root = slurm_tracer::discover_cgroup_root(opt.cgroup_root)) {
+                auto candidate = std::make_unique<slurm_tracer::CgroupResolver>(*root);
                 if (candidate->start()) {
                     std::cerr << "attribution: cgroup root appeared at " << *root << ", "
                               << candidate->size() << " cgroups known\n";
@@ -347,14 +347,14 @@ int main(int argc, char** argv) {
     }
 
     ship(ctx);
-    for (st::Sink* s : sinks)
+    for (slurm_tracer::Sink* s : sinks)
         s->flush();
 
     std::cerr << "shutting down: " << ctx.events << " events";
     if (resolver) {
-        const auto& st = resolver->stats();
-        std::cerr << ", attribution hits=" << st.hits << " misses=" << st.misses
-                  << " stale=" << st.stale << " rescans=" << st.rescans;
+        const auto& slurm_tracer = resolver->stats();
+        std::cerr << ", attribution hits=" << slurm_tracer.hits << " misses=" << slurm_tracer.misses
+                  << " stale=" << slurm_tracer.stale << " rescans=" << slurm_tracer.rescans;
     }
     std::cerr << ", dropped batches=" << stdout_sink.dropped() << "\n";
 

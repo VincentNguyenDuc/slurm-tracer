@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <sstream>
 
-namespace st {
+namespace slurm_tracer {
 namespace {
 
 void write_escaped(std::ostringstream& os, const std::string& s) {
@@ -125,4 +125,4 @@ std::string to_json(const Record& r) {
     return os.str();
 }
 
-} // namespace st
+} // namespace slurm_tracer

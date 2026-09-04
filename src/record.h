@@ -4,8 +4,7 @@
 // `attrs` keys, never new fields — that is what keeps the warehouse schema
 // stable as the probe set grows.
 
-#ifndef SLURM_TRACER_RECORD_H
-#define SLURM_TRACER_RECORD_H
+#pragma once
 
 #include <cstdint>
 #include <optional>
@@ -13,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-namespace st {
+namespace slurm_tracer {
 
 struct Record {
     // Provenance.
@@ -44,14 +43,9 @@ struct Record {
     double value = 0.0;
     std::string unit;
 
-    // Probe-specific detail. High cardinality is fine here (the warehouse
-    // handles it); these must never become Prometheus labels.
     std::vector<std::pair<std::string, std::string>> attrs;
 };
 
-// Serializes one record as a single-line JSON object (NDJSON).
 std::string to_json(const Record& r);
 
-} // namespace st
-
-#endif // SLURM_TRACER_RECORD_H
+} // namespace slurm_tracer
