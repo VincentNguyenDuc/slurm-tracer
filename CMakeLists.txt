@@ -34,6 +34,8 @@ add_bpf_program(proc_lifecycle
 # CAP_BPF.
 add_library(st_core STATIC
     src/core/attribution.cpp
+    src/core/clock.cpp
+    src/core/config.cpp
     src/core/record.cpp
     src/core/stdout_json_sink.cpp
 )

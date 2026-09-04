@@ -1,5 +1,7 @@
 #include "core/attribution.h"
 
+#include "core/clock.h"
+
 #include <dirent.h>
 #include <glob.h>
 #include <sys/inotify.h>
@@ -57,8 +59,8 @@ std::optional<uint32_t> parse_numeric_suffix(const std::string& seg, const char*
 }
 
 bool is_dir(const std::string& path) {
-    struct stat slurm_tracer {};
-    return ::stat(path.c_str(), &slurm_tracer) == 0 && S_ISDIR(slurm_tracer.st_mode);
+    struct stat st {};
+    return ::stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
 }
 
 std::string trim(const std::string& s) {
@@ -69,29 +71,6 @@ std::string trim(const std::string& s) {
     return s.substr(b, e - b + 1);
 }
 
-} // namespace
-
-uint64_t monotonic_ns() {
-    timespec ts{};
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return static_cast<uint64_t>(ts.tv_sec) * 1000000000ull + static_cast<uint64_t>(ts.tv_nsec);
-}
-
-namespace {
-
-// CLOCK_REALTIME - CLOCK_MONOTONIC, sampled once. Lets us express a file's
-// ctime (realtime) on the same clock as a BPF event's timestamp (monotonic).
-uint64_t boot_offset_ns() {
-    static const uint64_t offset = [] {
-        timespec rt{};
-        clock_gettime(CLOCK_REALTIME, &rt);
-        const uint64_t realtime =
-            static_cast<uint64_t>(rt.tv_sec) * 1000000000ull + static_cast<uint64_t>(rt.tv_nsec);
-        return realtime - monotonic_ns();
-    }();
-    return offset;
-}
-
 // When the cgroup directory was created, on CLOCK_MONOTONIC.
 //
 // This must be the directory's own creation time, not the moment we happened to
@@ -99,10 +78,9 @@ uint64_t boot_offset_ns() {
 // and missed; timestamping the entry with "now" would make every such entry
 // look newer than the event that found it, and the reuse guard below would
 // reject them all.
-uint64_t created_from_ctime(const struct stat& slurm_tracer) {
-    const uint64_t ctime_realtime =
-        static_cast<uint64_t>(slurm_tracer.st_ctim.tv_sec) * 1000000000ull +
-        static_cast<uint64_t>(slurm_tracer.st_ctim.tv_nsec);
+uint64_t created_from_ctime(const struct stat& st) {
+    const uint64_t ctime_realtime = static_cast<uint64_t>(st.st_ctim.tv_sec) * 1000000000ull +
+                                    static_cast<uint64_t>(st.st_ctim.tv_nsec);
     const uint64_t offset = boot_offset_ns();
     return ctime_realtime > offset ? ctime_realtime - offset : 0;
 }
@@ -232,13 +210,13 @@ bool CgroupResolver::start() {
 }
 
 void CgroupResolver::add_dir(const std::string& abs_path) {
-    struct stat slurm_tracer {};
-    if (::stat(abs_path.c_str(), &slurm_tracer) != 0)
+    struct stat st {};
+    if (::stat(abs_path.c_str(), &st) != 0)
         return;
 
     // The cgroup id *is* the directory's inode number. This is the entire
     // bridge between the kernel-side stamp and Slurm's job identity.
-    const uint64_t cgroup_id = static_cast<uint64_t>(slurm_tracer.st_ino);
+    const uint64_t cgroup_id = static_cast<uint64_t>(st.st_ino);
 
     const std::string relative =
         abs_path.size() > root_.size() ? abs_path.substr(root_.size() + 1) : std::string{};
@@ -246,7 +224,7 @@ void CgroupResolver::add_dir(const std::string& abs_path) {
     if (!attr)
         return; // not job work — slurmstepd's own cgroup, for instance
 
-    const uint64_t created_ns = created_from_ctime(slurm_tracer);
+    const uint64_t created_ns = created_from_ctime(st);
 
     auto it = entries_.find(cgroup_id);
     if (it != entries_.end()) {

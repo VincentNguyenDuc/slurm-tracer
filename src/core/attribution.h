@@ -98,7 +98,4 @@ private:
     Stats stats_;
 };
 
-// CLOCK_MONOTONIC nanoseconds — the same clock as bpf_ktime_get_ns().
-uint64_t monotonic_ns();
-
 } // namespace slurm_tracer

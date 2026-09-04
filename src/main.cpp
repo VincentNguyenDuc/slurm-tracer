@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "core/attribution.h"
+#include "core/clock.h"
 #include "core/record.h"
 #include "core/stdout_json_sink.h"
 #include "proc_lifecycle.skel.h"
@@ -231,12 +232,6 @@ int handle_event(void* raw_ctx, void* data, size_t size) {
     return 0;
 }
 
-uint64_t realtime_ns() {
-    timespec ts{};
-    clock_gettime(CLOCK_REALTIME, &ts);
-    return static_cast<uint64_t>(ts.tv_sec) * 1000000000ull + static_cast<uint64_t>(ts.tv_nsec);
-}
-
 } // namespace
 
 int main(int argc, char** argv) {
@@ -296,7 +291,7 @@ int main(int argc, char** argv) {
     ctx.resolver = resolver.get();
     ctx.sinks = &sinks;
     ctx.batch = &batch;
-    ctx.boot_offset_ns = realtime_ns() - slurm_tracer::monotonic_ns();
+    ctx.boot_offset_ns = slurm_tracer::boot_offset_ns();
 
     ring_buffer* rb = ring_buffer__new(bpf_map__fd(skel->maps.events), handle_event, &ctx, nullptr);
     if (!rb) {
