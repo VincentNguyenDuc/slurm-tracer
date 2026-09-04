@@ -17,7 +17,6 @@ root — so every include is layer-qualified, e.g. `#include "core/record.h"`.
 src/core/            record model, attribution, sink interface. No libbpf, so
                      tests exercise it without CAP_BPF.
 src/core/events.h    wire format shared by BPF and userspace (st_event_hdr)
-src/runtime/         libbpf: skeleton lifecycle, ring buffer poll loop
 src/plugins/probes/  one directory per probe: its .bpf.c, its event struct,
                      its userspace class
 src/plugins/sinks/   one directory per output
