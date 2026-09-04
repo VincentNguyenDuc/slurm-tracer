@@ -6,14 +6,13 @@
 // a bounded queue and a worker thread, drops the oldest batch on overflow, and
 // counts the drops so they are visible rather than silent.
 
-#ifndef SLURM_TRACER_SINK_H
-#define SLURM_TRACER_SINK_H
+#pragma once
 
 #include <cstdint>
 #include <string_view>
 #include <vector>
 
-#include "record.h"
+#include "core/record.h"
 
 namespace slurm_tracer {
 
@@ -32,5 +31,3 @@ public:
 };
 
 } // namespace slurm_tracer
-
-#endif // SLURM_TRACER_SINK_H

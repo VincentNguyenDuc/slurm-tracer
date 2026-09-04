@@ -5,8 +5,7 @@
 // Slurm cgroup tree and stat()ing each directory. All of the Slurm-layout
 // knowledge lives here; the kernel side knows nothing about it.
 
-#ifndef SLURM_TRACER_ATTRIBUTION_H
-#define SLURM_TRACER_ATTRIBUTION_H
+#pragma once
 
 #include <cstdint>
 #include <optional>
@@ -103,5 +102,3 @@ private:
 uint64_t monotonic_ns();
 
 } // namespace slurm_tracer
-
-#endif // SLURM_TRACER_ATTRIBUTION_H

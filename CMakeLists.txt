@@ -25,19 +25,24 @@ pkg_check_modules(LIBBPF REQUIRED IMPORTED_TARGET libbpf>=1.0)
 find_package(Threads REQUIRED)
 
 add_bpf_program(proc_lifecycle
-    SOURCE bpf/proc_lifecycle.bpf.c
-    INCLUDES include
+    SOURCE src/plugins/probes/proc_lifecycle/proc_lifecycle.bpf.c
+    INCLUDES src
 )
 
 # Everything that does not touch libbpf lives here, so the tests can exercise
 # the resolver and the record model without loading BPF programs or needing
 # CAP_BPF.
 add_library(st_core STATIC
-    src/attribution.cpp
-    src/record.cpp
-    src/stdout_json_sink.cpp
+    src/core/attribution.cpp
+    src/core/record.cpp
+    src/core/stdout_json_sink.cpp
 )
-target_include_directories(st_core PUBLIC src include)
+
+# src/ is the one include root, and nothing below it. Every include is
+# layer-qualified ("core/record.h"), so the layering stays visible at the point
+# of use; adding src/core here would let a bare "record.h" resolve from
+# anywhere and the structure would stop meaning anything.
+target_include_directories(st_core PUBLIC src)
 target_link_libraries(st_core PUBLIC Threads::Threads)
 
 add_executable(slurm-tracer src/main.cpp)

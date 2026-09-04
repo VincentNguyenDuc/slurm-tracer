@@ -1,4 +1,4 @@
-#include "attribution.h"
+#include "core/attribution.h"
 
 #include <dirent.h>
 #include <glob.h>

@@ -1,8 +1,12 @@
-FMT_FILES := $(wildcard src/*.c) $(wildcard src/*.h) \
-             $(wildcard src/*.cpp) $(wildcard src/*.hpp) \
-             $(wildcard include/*.h) $(wildcard include/*.hpp) \
-             $(wildcard bpf/*.c) $(wildcard bpf/*.h) \
-             $(wildcard tests/*.cpp)
+# Recursive on purpose: sources live in nested directories (src/core,
+# src/plugins/probes/<name>, ...), and a non-recursive wildcard would silently
+# stop matching them. The pre-commit hook runs `make format`, so a miss here
+# means formatting quietly stops being enforced rather than failing loudly.
+FMT_DIRS := src tests
+FMT_FILES := $(shell find $(FMT_DIRS) \
+                 \( -name '*.c' -o -name '*.h' \
+                 -o -name '*.cpp' -o -name '*.hpp' \) \
+                 -not -path '*/third_party/*' 2>/dev/null)
 
 BUILD_PRESET ?= debug
 

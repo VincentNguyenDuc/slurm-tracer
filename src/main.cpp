@@ -22,11 +22,13 @@
 #include <unordered_map>
 #include <vector>
 
-#include "attribution.h"
-#include "events.h"
+#include "core/attribution.h"
+#include "core/record.h"
+#include "core/stdout_json_sink.h"
 #include "proc_lifecycle.skel.h"
-#include "record.h"
-#include "stdout_json_sink.h"
+// Phase 1 leaves the probe wired directly into the daemon; phase 5 moves this
+// translation into the probe itself and this include goes away.
+#include "plugins/probes/proc_lifecycle/proc_lifecycle_events.h"
 
 namespace {
 
@@ -352,9 +354,9 @@ int main(int argc, char** argv) {
 
     std::cerr << "shutting down: " << ctx.events << " events";
     if (resolver) {
-        const auto& slurm_tracer = resolver->stats();
-        std::cerr << ", attribution hits=" << slurm_tracer.hits << " misses=" << slurm_tracer.misses
-                  << " stale=" << slurm_tracer.stale << " rescans=" << slurm_tracer.rescans;
+        const auto& s = resolver->stats();
+        std::cerr << ", attribution hits=" << s.hits << " misses=" << s.misses
+                  << " stale=" << s.stale << " rescans=" << s.rescans;
     }
     std::cerr << ", dropped batches=" << stdout_sink.dropped() << "\n";
 

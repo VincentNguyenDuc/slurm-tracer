@@ -7,52 +7,43 @@ job *consumed*. `slurm-tracer` uses eBPF to capture what a job actually *did* �
 lifecycle, scheduling delay, I/O and memory behaviour — attributed to the exact
 job/step/task, and streams it somewhere useful.
 
-**Status: M0.** The build pipeline and one probe (`proc_lifecycle`) work end to end.
-Job attribution, the probe registry, configuration, and sinks are designed but not yet
-implemented. See [docs/DESIGN.md](docs/DESIGN.md).
-
-## Requirements
-
-- Linux ≥ 5.8 with `CONFIG_DEBUG_INFO_BTF=y` (check: `ls /sys/kernel/btf/vmlinux`)
-- clang, llvm, bpftool, `libbpf-dev` ≥ 1.0
-- CMake ≥ 3.16, Ninja, and vcpkg for `fmt` / `spdlog` / `Catch2`
-- `CAP_BPF` + `CAP_PERFMON` (or root) to load probes
-
-The devcontainer in [.devcontainer/](.devcontainer/) provides all of this and requests
-the capabilities needed to actually load BPF programs.
-
-## Quickstart
-
-```bash
-make build                 # BUILD_PRESET=debug|release|profile
-sudo ./build/debug/slurm-tracer
-```
-
-`make vmlinux` dumps the running kernel's BTF if you want it outside the build.
-
 ## Layout
 
+Core is `src/core` and `src/runtime`; everything optional is a plugin under
+`src/plugins`. Headers sit next to their sources, and `src/` is the only include
+root — so every include is layer-qualified, e.g. `#include "core/record.h"`.
+
 ```
-bpf/                 BPF CO-RE programs, one per probe (*.bpf.c)
-include/events.h     wire format shared by BPF and userspace
-src/                 collector daemon
+src/core/            record model, attribution, sink interface. No libbpf, so
+                     tests exercise it without CAP_BPF.
+src/core/events.h    wire format shared by BPF and userspace (st_event_hdr)
+src/runtime/         libbpf: skeleton lifecycle, ring buffer poll loop
+src/plugins/probes/  one directory per probe: its .bpf.c, its event struct,
+                     its userspace class
+src/plugins/sinks/   one directory per output
 cmake/BpfProgram.cmake   compiles *.bpf.c and generates libbpf skeletons
 docs/DESIGN.md       architecture, attribution model, roadmap
 ```
 
+**Core never names a plugin.** `src/core` and `src/runtime` must contain no probe
+or sink identifier and no `#include "plugins/..."` — that rule, not the directory
+nesting, is what keeps the split real.
+
 ## Adding a probe
 
-1. Write `bpf/<name>.bpf.c`. Every event begins with `struct st_event_hdr` (see
-   [include/events.h](include/events.h)), which carries the cgroup id used for job
-   attribution.
+1. Create `src/plugins/probes/<name>/` holding `<name>.bpf.c` and `<name>_events.h`.
+   Every event begins with `struct st_event_hdr` (see
+   [src/core/events.h](src/core/events.h)), which carries the cgroup id used for job
+   attribution. The probe's own event struct and its `type` values stay in its
+   directory — they are not shared.
 2. Register it in [CMakeLists.txt](CMakeLists.txt):
 
    ```cmake
-   add_bpf_program(<name> SOURCE bpf/<name>.bpf.c INCLUDES include)
+   add_bpf_program(<name> SOURCE src/plugins/probes/<name>/<name>.bpf.c INCLUDES src)
    ```
 
 3. Link `bpf::<name>` and `#include "<name>.skel.h"`.
 
-The BPF ISA level defaults to `-mcpu=v3` (kernel ≥ 5.1); lower it with
-`-DBPF_CPU=v2` for older compute nodes. To build against a kernel other than the build
-host's, point `-DBPF_VMLINUX_BTF=` at a vendored BTF blob.
+> Being reworked: probes and sinks are becoming registry-driven plugins, after
+> which step 2 becomes an `add_st_probe()` call in the probe's own
+> `CMakeLists.txt`. See [docs/DESIGN.md](docs/DESIGN.md) §5.

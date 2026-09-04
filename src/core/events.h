@@ -4,6 +4,9 @@
 // collector can demultiplex a ring buffer without knowing the probe's payload.
 // Keep fields naturally aligned and explicitly sized: this struct is memcpy'd
 // straight out of the ring buffer.
+//
+// Only what every probe shares belongs here. A probe's own event struct lives
+// beside its .bpf.c — see plugins/probes/proc_lifecycle/proc_lifecycle_events.h.
 
 #ifndef SLURM_TRACER_EVENTS_H
 #define SLURM_TRACER_EVENTS_H
@@ -13,26 +16,21 @@
 #    include <linux/types.h>
 #endif
 
+// TASK_COMM_LEN. Shared because any probe that captures a command name uses it.
 #define ST_COMM_LEN 16
-
-enum st_event_type {
-    ST_EVENT_EXEC = 1,
-    ST_EVENT_EXIT = 2,
-};
 
 struct st_event_hdr {
     __u64 ts_ns;     // bpf_ktime_get_ns(), CLOCK_MONOTONIC
     __u64 cgroup_id; // cgroup v2 id; resolved to a Slurm job/step in userspace
-    __u32 type;      // enum st_event_type
+    __u32 type;      // probe-defined; see the note below
     __u32 pid;       // thread-group id (userspace "pid")
     __u32 tid;       // kernel task pid
     __u32 uid;
 };
 
-struct st_proc_event {
-    struct st_event_hdr hdr;
-    __s32 exit_code; // 0 for ST_EVENT_EXEC
-    char comm[ST_COMM_LEN];
-};
+// `type` is deliberately not a shared enum. Each probe owns its own ring buffer,
+// so the core always knows which probe an event came from and never interprets
+// `type` itself — only the owning probe does. A shared enum would mean every new
+// probe editing this file, which is exactly what the plugin split exists to avoid.
 
 #endif // SLURM_TRACER_EVENTS_H

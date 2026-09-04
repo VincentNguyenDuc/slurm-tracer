@@ -10,7 +10,7 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 
-#include "events.h"
+#include "proc_lifecycle_events.h"
 
 char LICENSE[] SEC("license") = "GPL";
 
@@ -24,7 +24,7 @@ struct {
 // non-Slurm activity without paying the ring buffer cost.
 const volatile __u64 filter_cgroup_id = 0;
 
-static __always_inline int emit(enum st_event_type type, __s32 exit_code) {
+static __always_inline int emit(enum st_proc_event_type type, __s32 exit_code) {
     __u64 cgroup_id = bpf_get_current_cgroup_id();
     if (filter_cgroup_id && cgroup_id != filter_cgroup_id)
         return 0;

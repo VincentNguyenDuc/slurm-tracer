@@ -1,5 +1,4 @@
-#ifndef SLURM_TRACER_STDOUT_JSON_SINK_H
-#define SLURM_TRACER_STDOUT_JSON_SINK_H
+#pragma once
 
 #include <atomic>
 #include <condition_variable>
@@ -8,7 +7,7 @@
 #include <mutex>
 #include <thread>
 
-#include "sink.h"
+#include "core/sink.h"
 
 namespace slurm_tracer {
 
@@ -43,5 +42,3 @@ private:
 };
 
 } // namespace slurm_tracer
-
-#endif // SLURM_TRACER_STDOUT_JSON_SINK_H

@@ -1,4 +1,4 @@
-#include "stdout_json_sink.h"
+#include "core/stdout_json_sink.h"
 
 #include <string>
 
