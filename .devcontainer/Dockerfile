@@ -8,8 +8,14 @@ RUN apt-get update \
         build-essential \
         cmake \
         ninja-build \
+        clang \
         clang-format \
+        llvm \
         make \
+        bpftool \
+        libbpf-dev \
+        libelf-dev \
+        zlib1g-dev \
         gdb \
         strace \
         netcat-openbsd \

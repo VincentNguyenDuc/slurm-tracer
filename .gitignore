@@ -63,3 +63,8 @@ build
 # Visual Studio Code
 .vscode
 vcpkg_installed
+
+# Generated BPF artifacts
+vmlinux.h
+*.bpf.o
+*.skel.h

@@ -29,6 +29,18 @@
     "remoteUser": "root",
     "mounts": [
         "source=${localEnv:HOME}/.ssh,target=/root/.ssh,type=bind,consistency=cached",
-        "source=${localEnv:HOME}/.claude,target=/root/.claude,type=bind,consistency=cached"
+        "source=${localEnv:HOME}/.claude,target=/root/.claude,type=bind,consistency=cached",
+        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+    ],
+    // Loading BPF programs needs CAP_BPF/CAP_PERFMON, an unrestricted seccomp
+    // profile for bpf(2)/perf_event_open(2), and a raised memlock limit.
+    "runArgs": [
+        "--cap-add=BPF",
+        "--cap-add=PERFMON",
+        "--cap-add=SYS_RESOURCE",
+        "--security-opt=seccomp=unconfined",
+        "--ulimit",
+        "memlock=-1:-1",
+        "--pid=host"
     ]
 }

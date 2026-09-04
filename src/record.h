@@ -1,0 +1,57 @@
+// The wide record model from docs/DESIGN.md §9.
+//
+// One record type for every probe. A new probe adds new `metric` values and new
+// `attrs` keys, never new fields — that is what keeps the warehouse schema
+// stable as the probe set grows.
+
+#ifndef SLURM_TRACER_RECORD_H
+#define SLURM_TRACER_RECORD_H
+
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace st {
+
+struct Record {
+    // Provenance.
+    uint64_t ts_ns = 0; // wall clock, nanoseconds since the epoch
+    std::string node;
+    std::string cluster;
+    std::string probe;
+
+    // Attribution. Empty optionals mean "this event could not be tied to a
+    // Slurm job" — emitted anyway, because a rising unattributed rate is the
+    // signal that the resolver is misconfigured.
+    std::optional<uint32_t> job_id;
+    std::optional<std::string> step_id; // "0", "batch", "extern", "interactive"
+    std::optional<uint32_t> task_id;
+    std::optional<uint32_t> uid;
+    std::optional<std::string> user;
+    std::optional<std::string> account;   // filled by enrichment, M1: unset
+    std::optional<std::string> partition; // filled by enrichment, M1: unset
+
+    // Identity.
+    std::string event_type;
+    uint32_t pid = 0;
+    uint32_t tid = 0;
+    std::string comm;
+
+    // Numeric payload.
+    std::string metric;
+    double value = 0.0;
+    std::string unit;
+
+    // Probe-specific detail. High cardinality is fine here (the warehouse
+    // handles it); these must never become Prometheus labels.
+    std::vector<std::pair<std::string, std::string>> attrs;
+};
+
+// Serializes one record as a single-line JSON object (NDJSON).
+std::string to_json(const Record& r);
+
+} // namespace st
+
+#endif // SLURM_TRACER_RECORD_H

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(MyProject C CXX)
+project(slurm-tracer C CXX)
 
 set(CMAKE_C_FLAGS_RELEASE   "-O2 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG")
@@ -14,13 +14,42 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g -fno-omit-frame-pointer")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(fmt CONFIG REQUIRED)
-find_package(spdlog CONFIG REQUIRED)
-find_package(OpenMP REQUIRED)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+include(BpfProgram)
 
-add_executable(main src/main.cpp)
-target_include_directories(main PRIVATE include)
-target_link_libraries(main PRIVATE fmt::fmt spdlog::spdlog OpenMP::OpenMP_CXX)
+# libbpf comes from the distro (libbpf-dev): it must match the bpftool used for
+# skeleton generation. It is the project's only external dependency.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBBPF REQUIRED IMPORTED_TARGET libbpf>=1.0)
 
-enable_testing()
-add_subdirectory(tests)
+find_package(Threads REQUIRED)
+
+add_bpf_program(proc_lifecycle
+    SOURCE bpf/proc_lifecycle.bpf.c
+    INCLUDES include
+)
+
+# Everything that does not touch libbpf lives here, so the tests can exercise
+# the resolver and the record model without loading BPF programs or needing
+# CAP_BPF.
+add_library(st_core STATIC
+    src/attribution.cpp
+    src/record.cpp
+    src/stdout_json_sink.cpp
+)
+target_include_directories(st_core PUBLIC src include)
+target_link_libraries(st_core PUBLIC Threads::Threads)
+
+add_executable(slurm-tracer src/main.cpp)
+target_link_libraries(slurm-tracer
+    PRIVATE
+        st_core
+        bpf::proc_lifecycle
+        PkgConfig::LIBBPF
+)
+
+option(SLURM_TRACER_BUILD_TESTS "Build the test suite" ON)
+if(SLURM_TRACER_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
