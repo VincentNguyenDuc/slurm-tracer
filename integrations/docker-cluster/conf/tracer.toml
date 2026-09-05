@@ -1,0 +1,16 @@
+# slurm-tracer config for every worker, per docs/DESIGN.md §7. `node` is left
+# unset here on purpose: entrypoint-worker.sh passes --node after --config, so
+# this file being identical on every worker (and each node still coming out
+# right) is itself part of what the integration test is checking.
+[node]
+cluster = "docker-test"
+
+[probes.proc_lifecycle]
+
+[probes.sched_latency]
+
+[sinks.stdout_json]
+
+[sinks.http]
+endpoint = "http://collector:9000/v1/telemetry"
+timeout  = "5s"

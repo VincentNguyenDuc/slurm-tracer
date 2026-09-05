@@ -5,6 +5,7 @@ add_library(st_core STATIC
     core/attribution.cpp
     core/clock.cpp
     core/config.cpp
+    core/config_file.cpp
     core/pipeline.cpp
     core/record.cpp
 )

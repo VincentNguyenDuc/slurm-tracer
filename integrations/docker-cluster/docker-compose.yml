@@ -23,6 +23,18 @@ services:
       - ./scripts:/opt/st/scripts:ro
     entrypoint: ["/opt/st/scripts/entrypoint-controller.sh"]
 
+  # Stand-in ingest endpoint for the http sink both workers are configured
+  # (conf/tracer.toml) to stream to, alongside stdout_json -- see
+  # scripts/collector.py.
+  collector:
+    build: .
+    image: slurm-tracer-test:latest
+    hostname: collector
+    volumes:
+      - ./scripts:/opt/st/scripts:ro
+      - ./out/collector:/var/log/collector
+    entrypoint: ["python3", "/opt/st/scripts/collector.py"]
+
   c1:
     build: .
     image: slurm-tracer-test:latest
@@ -30,10 +42,12 @@ services:
     privileged: true # CAP_BPF/CAP_PERFMON for slurm-tracer, cgroup mgmt for slurmd
     depends_on:
       - ctld
+      - collector
     volumes:
       - ../..:/workspace:ro
       - ./conf/slurm.conf:/etc/slurm/slurm.conf:ro
       - ./conf/cgroup.conf:/etc/slurm/cgroup.conf:ro
+      - ./conf/tracer.toml:/etc/slurm-tracer/config.toml:ro
       - ./secrets/munge.key:/secrets/munge.key:ro
       - ./scripts:/opt/st/scripts:ro
       - ./out/c1:/var/log/slurm-tracer
@@ -46,10 +60,12 @@ services:
     privileged: true
     depends_on:
       - ctld
+      - collector
     volumes:
       - ../..:/workspace:ro
       - ./conf/slurm.conf:/etc/slurm/slurm.conf:ro
       - ./conf/cgroup.conf:/etc/slurm/cgroup.conf:ro
+      - ./conf/tracer.toml:/etc/slurm-tracer/config.toml:ro
       - ./secrets/munge.key:/secrets/munge.key:ro
       - ./scripts:/opt/st/scripts:ro
       - ./out/c2:/var/log/slurm-tracer

@@ -31,10 +31,16 @@ Slurm, munge) lives in the image.
    build`: the BPF build reads the running kernel's BTF
    (`cmake/BpfProgram.cmake`), which an image build has no access to. See
    `scripts/build.sh`.
-3. Starts one controller (`ctld`) and two workers (`c1`, `c2`). Each worker
-   runs `slurmd` and `slurm-tracer` side by side (`scripts/entrypoint-worker.sh`),
-   with slurm-tracer's stdout_json output landing in `out/<node>/<node>.jsonl`
-   on the host.
+3. Starts one controller (`ctld`), a `collector` (a stand-in ingest endpoint
+   for the http sink, `scripts/collector.py`), and two workers (`c1`, `c2`).
+   Each worker runs `slurmd` and `slurm-tracer` side by side
+   (`scripts/entrypoint-worker.sh`). `slurm-tracer` is given
+   `--config /etc/slurm-tracer/config.toml` (`conf/tracer.toml`, identical on
+   both workers), which turns on `stdout_json` (landing in
+   `out/<node>/<node>.jsonl` on the host) and `http` (shipped to `collector`
+   over the compose network, landing in `out/collector/received.jsonl`) at
+   once -- this is as much a test of the config loader and of both sinks
+   agreeing on what they were handed as it is of the probes.
 4. Waits for both nodes to register as `idle`, then for both tracers to log
    that they found the Slurm cgroup scope (`attribution: cgroup root
    appeared...`) -- nodes going `idle` says nothing about whether slurm-tracer
@@ -54,20 +60,27 @@ Slurm, munge) lives in the image.
    bucket, and checks that its histogram records show up attributed to that
    job. Prints the merged per-node histogram so a human can see the actual
    latency distribution, not just pass/fail.
-8. Merges the per-node output into `out/combined.jsonl` (all records,
+8. Checks `out/collector/received.jsonl` for the same two jobs -- proof that
+   the http sink actually delivered over the network, from both workers, not
+   just that it ran.
+9. Merges the per-node output into `out/combined.jsonl` (all records,
    time-sorted) and `out/combined.csv` (same, flattened to the `Record`
    fields in `src/core/record.h` -- `attrs` excluded since it's a map).
    Written whether the checks passed or not, so a failure still leaves
-   something to inspect.
-9. Tears the cluster down (`docker compose down -v`), unless `--keep-up` was
-   given.
+   something to inspect. (The collector's file is left out of this merge --
+   it is the same records a second time, over http instead of stdout_json,
+   not new data.)
+10. Tears the cluster down (`docker compose down -v`), unless `--keep-up` was
+    given.
 
 
 ## Layout
 
 ```
-Dockerfile                 One image for every role (controller, worker, builder).
-docker-compose.yml         ctld (controller) + c1, c2 (workers) + builder (one-shot).
+Dockerfile                 One image for every role (controller, worker, builder,
+                           collector).
+docker-compose.yml         ctld (controller) + collector + c1, c2 (workers) +
+                           builder (one-shot).
 conf/slurm.conf            Minimal cluster config; node names match the compose
                            services. debug partition is OverSubscribe=FORCE:32
                            so the sched_latency workload can put more tasks on
@@ -76,8 +89,12 @@ conf/slurm.conf            Minimal cluster config; node names match the compose
                            step inside one already sized normally, which is
                            why test.sh's job 2 wraps it in a salloc.
 conf/cgroup.conf           cgroup/v2, IgnoreSystemd=yes.
+conf/tracer.toml           slurm-tracer's own config (docs/DESIGN.md §7):
+                           stdout_json + http, http pointed at collector.
 scripts/build.sh           Builds slurm-tracer into build/docker.
 scripts/common.sh          setup_munge, setup_cgroup_delegation, wait_for_binary.
+scripts/collector.py       Stand-in http sink ingest endpoint; appends every
+                           POST body to out/collector/received.jsonl.
 scripts/entrypoint-*.sh    Per-role container entrypoints.
 test.sh                    Orchestrates the above and checks the result.
 secrets/, out/, build/     Generated; gitignored.

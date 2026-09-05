@@ -17,11 +17,14 @@ wait_for_binary
 # attributes whatever jobs land on it. --cgroup-root is left to auto-discovery
 # (src/core/attribution.cpp) rather than pinned, so this exercises the same
 # discovery path a real deployment relies on.
+#
+# conf/tracer.toml (identical on both workers) picks the probes and sinks,
+# including the http sink shipping to the collector service -- --node is
+# passed after --config specifically to also exercise that a flag on the
+# command line overrides what the file set (src/main.cpp).
 /workspace/build/docker/slurm-tracer \
-    --cluster docker-test \
+    --config /etc/slurm-tracer/config.toml \
     --node "$NODE" \
-    --probes proc_lifecycle,sched_latency \
-    --sinks stdout_json \
     --verbose \
     >>"/var/log/slurm-tracer/${NODE}.jsonl" 2>>"/var/log/slurm-tracer/${NODE}.log" &
 TRACER_PID=$!

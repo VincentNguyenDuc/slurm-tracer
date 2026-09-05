@@ -179,39 +179,44 @@ shape, not yet built.
 
 ## 7. Configuration
 
-`/etc/slurm-tracer/config.toml`:
+`--config /etc/slurm-tracer/config.toml`, loaded once at startup (any other flag
+on the command line overrides what the file set, per-field):
 
 ```toml
 [node]
-cluster       = "prod"
-poll_interval = "10s"
+cluster        = "prod"
+flush_interval = "10s"
 
 [slurm]
 # Auto-discovered when omitted; override for IgnoreSystemd or a custom mountpoint.
 cgroup_root = "/sys/fs/cgroup/system.slice/slurmstepd.scope"
 
 [probes.proc_lifecycle]
-enabled = true
 
 [probes.sched_latency]
-enabled = true
-buckets = 20
 
-[probes.bio]
-enabled = false
+[sinks.stdout_json]
 
-[[sinks]]
-type = "stdout_json"
-
-[[sinks]]
-type     = "http"
-endpoint = "https://ingest.internal/v1/telemetry"
-batch    = 1000
-flush    = "5s"
+[sinks.http]
+endpoint = "http://ingest.internal:8080/v1/telemetry"
+timeout  = "5s"
 ```
 
-`SIGHUP` reloads: probes attach and detach in place without restarting the daemon,
-which keeps the attribution cache warm and avoids a gap in coverage.
+A `[probes.*]`/`[sinks.*]` section's mere presence is what turns it on — `enabled
+= false` is the one key every section understands, letting a node disable
+something by name without deleting the section (and its other settings) outright.
+Naming no `[probes.*]` at all, not even a disabled one, means every probe the
+build contains; the same for `[sinks.*]`. That "everything, until you name one
+thing" default is why a bare `[probes.proc_lifecycle]` with nothing under it is
+enough to opt in — the reverse of `enabled = false`, not its counterpart.
+
+Beyond that one shared key, a section's contents belong entirely to its plugin
+(`core/config.h`'s `ComponentConfig`) — the loader stores whatever it finds and
+never interprets it, so a plugin can add a setting without this file's format
+changing.
+
+Reload on `SIGHUP` — so probes can attach and detach without restarting the
+daemon and losing the warm attribution cache — is still roadmap, not built.
 
 ## 8. Sinks
 
@@ -231,9 +236,11 @@ oldest batch and increments a counter — which is itself exported, so drops are
 rather than silent. Backpressure must not reach the ring buffer: a stalled HTTP
 endpoint cannot be allowed to cost us kernel events.
 
-First two sinks are `stdout_json` (trivially debuggable, pipes into any existing log
-shipper) and `http` (NDJSON batches). Prometheus and OTLP arrive later behind the same
-interface — which is the entire reason the interface exists now rather than later.
+Three sinks exist: `stdout_json` (trivially debuggable, pipes into any existing log
+shipper), `http` (NDJSON batches over a kept-alive connection, no TLS), and `null`
+(for measuring probe/pipeline cost with I/O taken out of it). Prometheus and OTLP
+arrive later behind the same interface — which is the entire reason the interface
+exists now rather than later.
 
 ## 9. Record model and the warehouse
 

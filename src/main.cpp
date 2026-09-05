@@ -15,6 +15,7 @@
 #include <string>
 
 #include "core/config.h"
+#include "core/config_file.h"
 #include "daemon.h"
 
 namespace {
@@ -32,6 +33,7 @@ int libbpf_print(enum libbpf_print_level level, const char* fmt, va_list args) {
 
 void usage(const char* argv0) {
     std::cerr << "usage: " << argv0 << " [options]\n"
+              << "  --config <path>       load a TOML config file first; flags below override it\n"
               << "  --cluster <name>      cluster name stamped on every record (default: local)\n"
               << "  --node <name>         node name (default: hostname)\n"
               << "  --cgroup-root <path>  Slurm cgroup root; auto-discovered when omitted\n"
@@ -77,7 +79,14 @@ bool parse_args(int argc, char** argv, slurm_tracer::Config& config) {
             return argv[++i];
         };
 
-        if (arg == "--cluster") {
+        if (arg == "--config") {
+            // Already applied in main(), before this loop runs, so that flags
+            // appearing anywhere on the command line override it rather than
+            // only the ones written after --config. Here it's just consumed
+            // so it isn't reported as an unknown option.
+            if (!next("a path"))
+                return false;
+        } else if (arg == "--cluster") {
             const char* v = next("a name");
             if (!v)
                 return false;
@@ -132,6 +141,23 @@ bool parse_args(int argc, char** argv, slurm_tracer::Config& config) {
 
 int main(int argc, char** argv) {
     slurm_tracer::Config config;
+
+    // Handled before the general parse below so it establishes a baseline
+    // that every other flag can then override, regardless of where --config
+    // itself appears in argv.
+    for (int i = 1; i + 1 < argc; ++i) {
+        if (std::string(argv[i]) != "--config")
+            continue;
+        std::string error;
+        if (auto loaded = slurm_tracer::load_config_file(argv[i + 1], error)) {
+            config = std::move(*loaded);
+        } else {
+            std::cerr << "--config: " << error << "\n";
+            return EXIT_FAILURE;
+        }
+        break;
+    }
+
     if (!parse_args(argc, argv, config))
         return EXIT_FAILURE;
     if (config.node.empty())

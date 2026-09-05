@@ -28,6 +28,7 @@ RUN apt-get update \
         procps \
         psmisc \
         jq \
+        python3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace

@@ -38,13 +38,14 @@ trap cleanup EXIT
 
 log() { echo "test.sh: $*"; }
 
-mkdir -p secrets out/c1 out/c2
+mkdir -p secrets out/c1 out/c2 out/collector
 if [ ! -s secrets/munge.key ]; then
     log "generating munge key"
     head -c 1024 /dev/urandom > secrets/munge.key
 fi
 : > out/c1/c1.jsonl
 : > out/c2/c2.jsonl
+: > out/collector/received.jsonl
 
 log "building the cluster image"
 docker compose build >/dev/null
@@ -52,13 +53,13 @@ docker compose build >/dev/null
 log "building slurm-tracer (needs the running kernel's BTF; see scripts/build.sh)"
 docker compose run --rm builder
 
-log "starting controller and workers"
-docker compose up -d ctld c1 c2
+log "starting controller, collector and workers"
+docker compose up -d ctld collector c1 c2
 
 wait_for_idle() {
     local tries=60
     for i in $(seq 1 "$tries"); do
-        for svc in ctld c1 c2; do
+        for svc in ctld collector c1 c2; do
             if [ "$(docker compose ps -q "$svc" | xargs -r docker inspect -f '{{.State.Running}}' 2>/dev/null)" != "true" ]; then
                 log "$svc exited early; last logs:"
                 docker compose logs "$svc" | tail -50
@@ -211,6 +212,41 @@ if [ -n "${JOB2_ID:-}" ]; then
     done
 fi
 
+# Both workers are also configured (conf/tracer.toml) to ship the same
+# records over the http sink to the collector service, on the compose
+# network rather than loopback -- this is the actual thing worth checking:
+# that the sink, the config file that turns it on, and a real network hop
+# between containers all work together, not just that the daemon ran.
+log "checking http sink delivery via the collector service"
+COLLECTOR_FILE="out/collector/received.jsonl"
+if [ ! -s "$COLLECTOR_FILE" ]; then
+    log "FAIL: $COLLECTOR_FILE is empty -- the http sink delivered nothing"
+    FAIL=1
+else
+    job1_via_http="$(jq -c --argjson jid "$JOB1_ID" \
+        'select(.job_id == $jid and .probe == "proc_lifecycle")' "$COLLECTOR_FILE" 2>/dev/null || true)"
+    if [ -z "$job1_via_http" ]; then
+        log "FAIL: collector never received a proc_lifecycle record for job $JOB1_ID"
+        FAIL=1
+    else
+        log "PASS: collector received proc_lifecycle records for job $JOB1_ID over http"
+    fi
+
+    if [ -n "${JOB2_ID:-}" ]; then
+        job2_via_http="$(jq -c --argjson jid "$JOB2_ID" \
+            'select(.job_id == $jid and .probe == "sched_latency")' "$COLLECTOR_FILE" 2>/dev/null || true)"
+        if [ -z "$job2_via_http" ]; then
+            log "FAIL: collector never received a sched_latency record for job $JOB2_ID"
+            FAIL=1
+        else
+            log "PASS: collector received sched_latency records for job $JOB2_ID over http"
+        fi
+    fi
+
+    collector_nodes="$(jq -r '.node' "$COLLECTOR_FILE" 2>/dev/null | sort -u | tr '\n' ' ')"
+    log "  collector received records from: ${collector_nodes}"
+fi
+
 log "merging per-node output into out/combined.jsonl and out/combined.csv"
 per_node_files=()
 for node in "${NODES[@]}"; do
@@ -226,9 +262,9 @@ jq -s -r --arg cols "$CSV_COLS" '
 ' "${per_node_files[@]}" > out/combined.csv
 
 if [ "$FAIL" -ne 0 ]; then
-    log "FAIL: see above. Full output is under out/<node>/<node>.jsonl, merged in out/combined.{jsonl,csv}"
+    log "FAIL: see above. Full output is under out/<node>/<node>.jsonl and out/collector/received.jsonl, merged in out/combined.{jsonl,csv}"
     exit 1
 fi
 
-log "PASS: proc_lifecycle attributed job $JOB1_ID and sched_latency attributed job $JOB2_ID correctly"
-log "combined output: out/combined.jsonl, out/combined.csv"
+log "PASS: proc_lifecycle (job $JOB1_ID) and sched_latency (job $JOB2_ID) both attributed correctly, locally and via the http sink"
+log "combined output: out/combined.jsonl, out/combined.csv (local view); out/collector/received.jsonl (what shipped over http)"

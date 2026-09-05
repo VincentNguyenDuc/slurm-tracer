@@ -6,5 +6,6 @@
 
 add_subdirectory(probes/proc_lifecycle)
 add_subdirectory(probes/sched_latency)
+add_subdirectory(sinks/http)
 add_subdirectory(sinks/null)
 add_subdirectory(sinks/stdout_json)
