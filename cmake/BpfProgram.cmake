@@ -74,6 +74,12 @@ function(add_bpf_program name)
         OUTPUT "${obj}"
         COMMAND "${BPF_CLANG}"
                 -g -O2 -Wall -Werror
+                # vmlinux.h is dumped straight from kernel BTF and preserves
+                # kernel source patterns like `struct renamedata;` used as an
+                # anonymous-field member inside struct ovl_renamedata. Clang
+                # flags that as a no-op declaration; it's valid, unfixable
+                # generated code, so silence just this one warning.
+                -Wno-missing-declarations
                 -target bpf
                 -D__TARGET_ARCH_${BPF_TARGET_ARCH}
                 -mcpu=${BPF_CPU}
