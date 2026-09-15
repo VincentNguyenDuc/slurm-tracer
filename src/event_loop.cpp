@@ -17,7 +17,7 @@ EventLoop::~EventLoop() {
 bool EventLoop::add(Probe& probe, RecordEmitter& out) {
     const int fd = probe.ring_fd();
     if (fd < 0)
-        return true; // aggregating probe; nothing to poll
+        return true; // no ring buffer to poll
 
     bindings_.push_back(std::unique_ptr<Binding>(new Binding{&probe, &out}));
     void* ctx = bindings_.back().get();

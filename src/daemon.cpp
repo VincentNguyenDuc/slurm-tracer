@@ -139,7 +139,6 @@ int Daemon::run(const volatile std::sig_atomic_t& stop) {
               << " node=" << config_.node << " (Ctrl-C to stop)\n";
 
     int rc = EXIT_SUCCESS;
-    auto last_probe_poll = std::chrono::steady_clock::now();
 
     while (stop == 0) {
         if (!loop_.poll(kPollTimeout)) {
@@ -154,24 +153,13 @@ int Daemon::run(const volatile std::sig_atomic_t& stop) {
 
         resolver_->tick();
 
-        const auto now = std::chrono::steady_clock::now();
-        if (now - last_probe_poll >= config_.flush_interval) {
-            last_probe_poll = now;
-            poll_probes();
-        }
-
         // A partial batch must not sit indefinitely on a quiet node.
-        pipeline_->tick(now);
+        pipeline_->tick(std::chrono::steady_clock::now());
     }
 
     pipeline_->flush();
     report_shutdown();
     return rc;
-}
-
-void Daemon::poll_probes() {
-    for (const auto& probe : probes_)
-        probe->poll(*pipeline_);
 }
 
 void Daemon::report_shutdown() const {

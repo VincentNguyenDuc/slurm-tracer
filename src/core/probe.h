@@ -57,15 +57,11 @@ public:
     virtual bool attach() = 0;
     virtual void detach() = 0;
 
-    // Event-driven probes expose a ring buffer for the event loop to poll and
-    // translate each event in on_event().
+    // Every probe exposes a ring buffer for the event loop to poll and
+    // translate each event in on_event(). See DESIGN §6: this tree only
+    // supports the event-driven shape, not in-kernel aggregation.
     virtual int ring_fd() const { return -1; }
     virtual void on_event(const void* data, size_t len, RecordEmitter&) = 0;
-
-    // Aggregating probes leave on_event() empty and instead flush kernel-side
-    // maps here, once per poll interval. See DESIGN §6: anything that can exceed
-    // ~10^4/s per node must aggregate in the kernel rather than stream events.
-    virtual void poll(RecordEmitter&) {}
 };
 
 } // namespace slurm_tracer

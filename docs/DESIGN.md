@@ -35,15 +35,15 @@ stays sane, attributed to a specific job/step, at a cost sampling can't reach.
 kernel
  ┌───────────────────────────────────────────────────────┐
  │ probe modules (BPF CO-RE objects)                     │
- │   proc_lifecycle   sched_latency   bio   tcp   oom    │
- │        │ discrete events        │ aggregates          │
- │        ▼                        ▼                     │
- │   BPF_MAP_TYPE_RINGBUF     per-cgroup HASH / histogram│
- └────────┬────────────────────────┬─────────────────────┘
-          │ epoll                  │ read on interval
-──────────┼────────────────────────┼──────────────────────
-userspace │                        │
- ┌────────▼────────────────────────▼─────────────────────┐
+ │   cgroup_lifecycle   proc_lifecycle                   │
+ │        │ discrete events                               │
+ │        ▼                                               │
+ │   BPF_MAP_TYPE_RINGBUF                                │
+ └────────┬────────────────────────────────────────────── ┘
+          │ epoll
+──────────┼─────────────────────────────────────────────
+userspace │
+ ┌────────▼────────────────────────────────────────────┐
  │ collector core                                        │
  │   registry ....... probe lifecycle, failure isolation │
  │   attribution .... cgroup_id → job / step / task / uid│
@@ -135,14 +135,9 @@ public:
     virtual bool attach() = 0;
     virtual void detach() = 0;
 
-    // Event-driven probes hand the core a ring buffer to poll.
+    // Every probe hands the core a ring buffer to poll.
     virtual int  ring_fd() const { return -1; }
     virtual void on_event(const void* data, size_t len, RecordEmitter&) = 0;
-
-    // Aggregating probes leave on_event() empty; the core calls this on the
-    // same cadence records are flushed to sinks instead. An aggregate is only
-    // ever as fresh as the next flush — that's the shape, not a bug.
-    virtual void poll(RecordEmitter&) {}
 };
 ```
 
@@ -160,22 +155,19 @@ older kernel should lose one probe, not all observability.
 **One ring buffer per probe**, not a shared one. It costs a few MiB, and in exchange a
 chatty probe cannot starve a quiet one, and each buffer is sized to its own event rate.
 
-## 6. Events versus aggregates
+## 6. Events only — no in-kernel aggregation
 
-Two data shapes, and picking wrong is how eBPF tooling destroys a cluster.
-
-| | Events (ringbuf) | Aggregates (per-cgroup map) |
-|---|---|---|
-| For | rare, individually interesting | high-frequency, interesting only statistically |
-| Examples | exec, exit, OOM kill, job failure | run-queue latency, bio latency, bytes moved |
-| Kernel rate | 10–10³/s | 10⁵–10⁷/s |
-| Userspace cost | one record per event | one map read per cgroup per interval |
-
-**Rule: if it can exceed ~10⁴/s per node, aggregate in the kernel.** Never stream
-per-syscall or per-packet events. Latency distributions go in log₂-bucketed histogram
-maps keyed by cgroup id, flushed on the poll interval — `sched_latency` (run-queue
-wait time) is the first probe built this way; `bio`, `tcp` and `oom` are the same
-shape, not yet built.
+Every probe in this tree streams individual events through a ring buffer (§5):
+rare, individually interesting occurrences like exec, exit, or a cgroup
+appearing — never per-syscall or per-packet volume. There is deliberately no
+aggregating shape here (a per-cgroup HASH or histogram map, flushed on a poll
+interval instead of streamed) — that shape exists to handle data too frequent
+to stream, roughly anything exceeding ~10⁴/s per node, such as run-queue
+latency or bio latency. No probe in this tree produces data anywhere near that
+rate, and none should be added as an event probe if it would: that is the line
+where streaming per-syscall or per-packet events starts destroying a cluster's
+BPF overhead budget, and the answer is to not build that probe here at all, not
+to stream it anyway.
 
 ## 7. Configuration
 
@@ -192,8 +184,6 @@ flush_interval = "10s"
 cgroup_root = "/sys/fs/cgroup/system.slice/slurmstepd.scope"
 
 [probes.proc_lifecycle]
-
-[probes.sched_latency]
 
 [sinks.stdout_json]
 

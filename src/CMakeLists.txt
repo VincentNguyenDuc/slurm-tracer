@@ -19,7 +19,6 @@ target_link_libraries(st_core PUBLIC Threads::Threads)
 
 add_subdirectory(probes/cgroup_lifecycle)
 add_subdirectory(probes/proc_lifecycle)
-add_subdirectory(probes/sched_latency)
 add_subdirectory(sinks/http)
 add_subdirectory(sinks/null)
 add_subdirectory(sinks/stdout_json)

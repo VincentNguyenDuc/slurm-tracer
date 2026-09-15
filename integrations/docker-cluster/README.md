@@ -46,19 +46,16 @@ Slurm, munge) lives in the image.
    worth keeping around, see step 5.
 4. Waits for both nodes to register as `idle`, then for both tracers to log
    that they found the Slurm cgroup scope (`attribution: cgroup root
-   appeared...`) -- nodes going `idle` says nothing about whether slurm-tracer
-   has attached yet, and a job submitted in that gap comes back completely
-   unattributed (`src/daemon.cpp`'s `kDiscoveryRetry` is 5s). A few seconds'
-   settle time after that message is also given before submitting anything,
-   since the resolver still needs to notice the job's own cgroup directories
-   as they're created.
+   <path>, N cgroups known at startup`) -- nodes going `idle` says nothing
+   about whether slurm-tracer has attached yet, and a job submitted in that
+   gap comes back completely unattributed. A few seconds' settle time after
+   that message is also given before submitting anything, so the
+   `cgroup_lifecycle` probe (`src/probes/cgroup_lifecycle`) finishes attaching
+   -- from then on it catches every job's cgroup directories itself, via the
+   kernel's own `cgroup_mkdir` tracepoint, with no further polling.
 5. Runs every scenario under `scenarios/`, in order:
    - `proc_lifecycle.sh` submits `srun --nodes=2 --ntasks-per-node=1 ...` and
      reads back the job id it printed.
-   - `sched_latency.sh` submits a second, deliberately oversubscribed
-     workload -- 32 tasks per node against a node configured with 1 CPU -- to
-     give the aggregating `sched_latency` probe (docs/DESIGN.md §6) real
-     run-queue contention to bucket.
 
    Each scenario ends by calling `record_scenario` (`scenarios/lib.sh`),
    which snapshots its job id, the raw command output, and the *current*
@@ -85,12 +82,7 @@ Dockerfile                 One image for every role (controller, worker, builder
 docker-compose.yml         ctld (controller) + collector + c1, c2 (workers) +
                            builder (one-shot).
 conf/slurm.conf            Minimal cluster config; node names match the compose
-                           services. debug partition is OverSubscribe=FORCE:32
-                           so the sched_latency workload can put more tasks on
-                           a node than it has CPUs -- plain `srun --overcommit`
-                           can't do that for a fresh allocation, only for a
-                           step inside one already sized normally, which is
-                           why scenarios/sched_latency.sh wraps it in a salloc.
+                           services.
 conf/cgroup.conf           cgroup/v2, IgnoreSystemd=yes.
 conf/tracer.toml           slurm-tracer's own config (docs/DESIGN.md §7):
                            stdout_json + http, http pointed at collector.

@@ -40,6 +40,7 @@ the directory split, is what keeps core testable without CAP_BPF or a kernel.
    generates the manifest that calls it, so nothing in core ever names a probe.
 
 No other file changes — that's the plugin contract in
-[docs/DESIGN.md](docs/DESIGN.md) §5. `sched_latency` (aggregate) and
-`proc_lifecycle` (event-driven) are the two probes that exist today, and
-between them cover both shapes in §6.
+[docs/DESIGN.md](docs/DESIGN.md) §5. `proc_lifecycle` is the event-driven probe
+that exists today; `cgroup_lifecycle` follows the same contract but feeds
+attribution directly instead of emitting records (§4). Every probe here
+streams individual events — there is no in-kernel aggregating shape; see §6.

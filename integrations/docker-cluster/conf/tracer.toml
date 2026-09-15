@@ -9,8 +9,6 @@ cluster = "docker-test"
 
 [probes.proc_lifecycle]
 
-[probes.sched_latency]
-
 [sinks.stdout_json]
 
 [sinks.http]

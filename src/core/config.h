@@ -14,7 +14,7 @@
 
 namespace slurm_tracer {
 
-// Settings for one probe or one sink: [probes.sched_latency] buckets = 20.
+// Settings for one probe or one sink: [probes.proc_lifecycle] some_key = value.
 //
 // Values are kept as strings and converted on read. A component asks for what
 // it understands and supplies its own fallback, so an unknown key is inert

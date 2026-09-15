@@ -124,9 +124,11 @@ wait_for_attribution() {
     return 1
 }
 wait_for_attribution
-# "cgroup root appeared" only means the resolver found the scope directory
-# and armed its top-level inotify watch; give it a moment to settle before a
-# job creates the nested job_/step_/task_ directories it needs to catch.
+# The log line above only means the resolver bootstrapped against whatever
+# cgroups already existed; give the cgroup_lifecycle probe (which is what
+# actually catches job_/step_/task_ directories from here on, via the kernel's
+# own cgroup_mkdir tracepoint -- see src/probes/cgroup_lifecycle) a moment to
+# finish attaching before anything is submitted.
 sleep 3
 
 log "running scenarios"
