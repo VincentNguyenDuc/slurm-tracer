@@ -56,6 +56,11 @@ Slurm, munge) lives in the image.
 5. Runs every scenario under `scenarios/`, in order:
    - `proc_lifecycle.sh` submits `srun --nodes=2 --ntasks-per-node=1 ...` and
      reads back the job id it printed.
+   - `oom.sh` submits a 1-node, `--mem=50M` job that keeps allocating past
+     that limit until the kernel's memcg OOM killer kills it -- exercises the
+     `oom` probe, and depends on `conf/cgroup.conf`'s `ConstrainRAMSpace`/
+     `ConstrainSwapSpace=yes` actually turning `--mem` into that job's cgroup
+     `memory.max`.
 
    Each scenario ends by calling `record_scenario` (`scenarios/lib.sh`),
    which snapshots its job id, the raw command output, and the *current*
