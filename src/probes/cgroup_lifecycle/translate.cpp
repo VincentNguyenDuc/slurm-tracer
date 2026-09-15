@@ -1,7 +1,8 @@
 #include "probes/cgroup_lifecycle/translate.h"
 
+#include <spdlog/spdlog.h>
+
 #include <cstring>
-#include <iostream>
 
 namespace slurm_tracer {
 
@@ -14,7 +15,7 @@ bool translate(const st_cgroup_event& e, CgroupLifecycleUpdate& out) {
         out.created = false;
         break;
     default:
-        std::cerr << "cgroup_lifecycle: unknown event type " << e.hdr.type << "\n";
+        spdlog::warn("cgroup_lifecycle: unknown event type {}", e.hdr.type);
         return false;
     }
 

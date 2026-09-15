@@ -6,7 +6,8 @@
 // embedded BPF object does not leak into anything that merely wants the
 // translation. See translate.h for the part worth testing.
 
-#include <iostream>
+#include <spdlog/spdlog.h>
+
 #include <memory>
 
 #include "cgroup_lifecycle.skel.h"
@@ -41,7 +42,7 @@ public:
 
     void on_event(const void* data, size_t len, RecordEmitter&) override {
         if (len < sizeof(st_cgroup_event)) {
-            std::cerr << "cgroup_lifecycle: short event, " << len << " bytes\n";
+            spdlog::warn("cgroup_lifecycle: short event, {} bytes", len);
             return;
         }
         if (resolver_ == nullptr)

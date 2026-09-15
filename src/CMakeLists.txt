@@ -15,7 +15,7 @@ add_library(st_core STATIC
 # of use; adding core/ here would let a bare "record.h" resolve from anywhere
 # and the structure would stop meaning anything.
 target_include_directories(st_core PUBLIC ${ST_INCLUDE_ROOT})
-target_link_libraries(st_core PUBLIC Threads::Threads)
+target_link_libraries(st_core PUBLIC Threads::Threads spdlog::spdlog nlohmann_json::nlohmann_json)
 
 add_subdirectory(probes/cgroup_lifecycle)
 add_subdirectory(probes/proc_lifecycle)

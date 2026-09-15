@@ -29,7 +29,6 @@ public:
         std::string cluster;
         size_t batch_size = 64;
         std::chrono::milliseconds flush_interval{1000};
-        bool verbose = false;
     };
 
     Pipeline(Options opt, std::vector<Sink*> sinks);

@@ -7,12 +7,16 @@
 #include <bpf/libbpf.h>
 #include <unistd.h>
 
+#include <spdlog/sinks/stdout_color_sinks.h> // declares stderr_color_mt() too
+#include <spdlog/spdlog.h>
+
 #include <csignal>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <string_view>
 
 #include "core/config.h"
 #include "core/config_file.h"
@@ -24,16 +28,31 @@ volatile std::sig_atomic_t g_stop = 0;
 
 void on_signal(int) { g_stop = 1; }
 
+// libbpf hands us its own level per message; map it onto spdlog's rather than
+// dumping raw, unformatted text straight to stderr.
 int libbpf_print(enum libbpf_print_level level, const char* fmt, va_list args) {
     if (level == LIBBPF_DEBUG)
         return 0;
-    std::vfprintf(stderr, fmt, args);
+
+    char buf[1024];
+    const int n = std::vsnprintf(buf, sizeof(buf), fmt, args);
+    if (n <= 0)
+        return 0;
+    // libbpf's format strings already end in '\n'; spdlog adds its own.
+    std::string_view msg(buf, static_cast<size_t>(n));
+    if (!msg.empty() && msg.back() == '\n')
+        msg.remove_suffix(1);
+
+    if (level == LIBBPF_WARN)
+        spdlog::warn("libbpf: {}", msg);
+    else
+        spdlog::info("libbpf: {}", msg);
     return 0;
 }
 
 void usage(const char* argv0) {
     std::cerr << "usage: " << argv0 << " [options]\n"
-              << "  --config <path>       load a TOML config file first; flags below override it\n"
+              << "  --config <path>       load a JSON config file first; flags below override it\n"
               << "  --cluster <name>      cluster name stamped on every record (default: local)\n"
               << "  --node <name>         node name (default: hostname)\n"
               << "  --cgroup-root <path>  Slurm cgroup root; auto-discovered when omitted\n"
@@ -73,7 +92,7 @@ bool parse_args(int argc, char** argv, slurm_tracer::Config& config) {
         const std::string arg = argv[i];
         auto next = [&](const char* what) -> const char* {
             if (i + 1 >= argc) {
-                std::cerr << arg << " requires " << what << "\n";
+                spdlog::error("{} requires {}", arg, what);
                 return nullptr;
             }
             return argv[++i];
@@ -129,7 +148,7 @@ bool parse_args(int argc, char** argv, slurm_tracer::Config& config) {
             usage(argv[0]);
             std::exit(EXIT_SUCCESS);
         } else {
-            std::cerr << "unknown option: " << arg << "\n";
+            spdlog::error("unknown option: {}", arg);
             usage(argv[0]);
             return false;
         }
@@ -140,6 +159,13 @@ bool parse_args(int argc, char** argv, slurm_tracer::Config& config) {
 } // namespace
 
 int main(int argc, char** argv) {
+    // First thing, before anything else can log: diagnostics go to stderr
+    // (stdout stays free for a sink like stdout_json to write records to).
+    // The level is provisionally info until config is fully resolved below,
+    // since --verbose can come from either the config file or the flag.
+    spdlog::set_default_logger(spdlog::stderr_color_mt("slurm-tracer"));
+    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
+
     slurm_tracer::Config config;
 
     // Handled before the general parse below so it establishes a baseline
@@ -152,7 +178,7 @@ int main(int argc, char** argv) {
         if (auto loaded = slurm_tracer::load_config_file(argv[i + 1], error)) {
             config = std::move(*loaded);
         } else {
-            std::cerr << "--config: " << error << "\n";
+            spdlog::error("--config: {}", error);
             return EXIT_FAILURE;
         }
         break;
@@ -162,6 +188,8 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     if (config.node.empty())
         config.node = hostname();
+
+    spdlog::set_level(config.verbose ? spdlog::level::debug : spdlog::level::info);
 
     libbpf_set_print(libbpf_print);
     std::signal(SIGINT, on_signal);

@@ -2,7 +2,8 @@
 
 #include <pwd.h>
 
-#include <iostream>
+#include <spdlog/spdlog.h>
+
 #include <utility>
 
 #include "core/attribution.h"
@@ -59,8 +60,9 @@ void Pipeline::enrich(Record& r) {
         r.task_id = attr->task_id;
     } else {
         ++stats_.unattributed;
-        if (opt_.verbose)
-            std::cerr << "unattributed cgroup " << r.cgroup_id << "\n";
+        // Level-gated rather than an opt_.verbose check: spdlog::set_level in
+        // main() is what --verbose actually controls now.
+        spdlog::debug("unattributed cgroup {}", r.cgroup_id);
     }
 }
 

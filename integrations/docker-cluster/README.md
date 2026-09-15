@@ -36,7 +36,7 @@ Slurm, munge) lives in the image.
    for the http sink, `scripts/collector.py`), and two workers (`c1`, `c2`).
    Each worker runs `slurmd` and `slurm-tracer` side by side
    (`scripts/entrypoint-worker.sh`). `slurm-tracer` is given
-   `--config /etc/slurm-tracer/config.toml` (`conf/tracer.toml`, identical on
+   `--config /etc/slurm-tracer/config.json` (`conf/tracer.json`, identical on
    both workers), which turns on `stdout_json` (landing in
    `live/<node>/<node>.jsonl` on the host) and `http` (shipped to `collector`
    over the compose network, landing in `live/collector/received.jsonl`) at
@@ -84,7 +84,7 @@ docker-compose.yml         ctld (controller) + collector + c1, c2 (workers) +
 conf/slurm.conf            Minimal cluster config; node names match the compose
                            services.
 conf/cgroup.conf           cgroup/v2, IgnoreSystemd=yes.
-conf/tracer.toml           slurm-tracer's own config (docs/DESIGN.md §7):
+conf/tracer.json           slurm-tracer's own config (docs/DESIGN.md §7):
                            stdout_json + http, http pointed at collector.
 scripts/build.sh           Builds slurm-tracer into build/docker.
 scripts/common.sh          setup_munge, setup_cgroup_delegation, wait_for_binary.

@@ -23,11 +23,17 @@ include(StPlugin)
 set(ST_INCLUDE_ROOT "${CMAKE_SOURCE_DIR}/src")
 
 # libbpf comes from the distro (libbpf-dev): it must match the bpftool used for
-# skeleton generation. It is the project's only external dependency.
+# skeleton generation.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBBPF REQUIRED IMPORTED_TARGET libbpf>=1.0)
 
 find_package(Threads REQUIRED)
+
+# spdlog (logging) and nlohmann_json (config + record serialization) round out
+# the external dependencies, all three from the distro rather than vendored or
+# fetched -- see src/CMakeLists.txt for how they're linked into st_core.
+find_package(spdlog REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 add_subdirectory(src)
 

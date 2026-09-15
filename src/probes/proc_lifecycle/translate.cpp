@@ -1,7 +1,8 @@
 #include "probes/proc_lifecycle/translate.h"
 
+#include <spdlog/spdlog.h>
+
 #include <cstring>
-#include <iostream>
 #include <string>
 
 namespace slurm_tracer {
@@ -25,7 +26,7 @@ bool translate(const st_proc_event& e, Record& r) {
             r.attrs.emplace_back("signal", std::to_string(sig));
         break;
     default:
-        std::cerr << "proc_lifecycle: unknown event type " << e.hdr.type << "\n";
+        spdlog::warn("proc_lifecycle: unknown event type {}", e.hdr.type);
         return false;
     }
 

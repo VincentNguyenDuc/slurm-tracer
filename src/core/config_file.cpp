@@ -1,48 +1,39 @@
 #include "core/config_file.h"
 
-#include <cstdlib>
+#include <nlohmann/json.hpp>
+
 #include <fstream>
-#include <string>
 
 namespace slurm_tracer {
 namespace {
 
-std::string trim(const std::string& s) {
-    const size_t b = s.find_first_not_of(" \t\r\n");
-    if (b == std::string::npos)
-        return {};
-    const size_t e = s.find_last_not_of(" \t\r\n");
-    return s.substr(b, e - b + 1);
-}
-
-// Drops a trailing '#' comment, but not one inside a quoted string.
-std::string strip_comment(const std::string& line) {
-    bool in_quotes = false;
-    for (size_t i = 0; i < line.size(); ++i) {
-        if (line[i] == '"')
-            in_quotes = !in_quotes;
-        else if (line[i] == '#' && !in_quotes)
-            return line.substr(0, i);
-    }
-    return line;
-}
-
-std::string unquote(const std::string& value) {
-    if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
-        return value.substr(1, value.size() - 2);
-    return value;
-}
+using Json = nlohmann::json;
 
 // Routes a value through ComponentConfig's own parsing (core/config.cpp)
 // rather than re-implementing bool/duration parsing here -- there is exactly
-// one definition of what "10s" or "true" means, and it is that one.
+// one definition of what "10s" or true means, and it is that one.
 ComponentConfig one_shot(const std::string& value) {
     ComponentConfig c;
     c.set("v", value);
     return c;
 }
 
-// Removes any probes/sinks entry explicitly marked `enabled = false`.
+// Converts whatever JSON type a leaf value actually is back to a string --
+// ComponentConfig (core/config.h) is deliberately string-keyed and
+// string-valued no matter what the file format's native types are.
+std::string stringify(const Json& v) {
+    if (v.is_string())
+        return v.get<std::string>();
+    if (v.is_boolean())
+        return v.get<bool>() ? "true" : "false";
+    if (v.is_number_integer() || v.is_number_unsigned())
+        return std::to_string(v.get<int64_t>());
+    if (v.is_number_float())
+        return std::to_string(v.get<double>());
+    return v.dump(); // array/object/null: not a value any component expects
+}
+
+// Removes any probes/sinks entry explicitly marked `"enabled": false`.
 // Presence in the map means enabled (core/config.h), so a section that
 // exists in the file but disables itself must not leave an entry behind --
 // the alternative, defaulting a missing `enabled` key to true, is exactly
@@ -56,6 +47,46 @@ void drop_disabled(std::map<std::string, ComponentConfig>& components) {
     }
 }
 
+// Walks a "probes"/"sinks" object into `components`, one ComponentConfig per
+// member -- present even for `{}`, which is what turns a component on with no
+// settings (core/config.h: presence means enabled).
+bool load_components(
+    const Json& section,
+    const std::string& section_name,
+    std::map<std::string, ComponentConfig>& components,
+    std::string& error
+) {
+    for (const auto& [name, value] : section.items()) {
+        if (!value.is_object()) {
+            error = "\"" + section_name + "." + name + "\" must be an object";
+            return false;
+        }
+        ComponentConfig& c = components[name];
+        for (const auto& [key, v] : value.items())
+            c.set(key, stringify(v));
+    }
+    return true;
+}
+
+// Walks "node" or "slurm" into the handful of top-level Config fields each
+// recognises. `handler` returns false for a key it does not know.
+template <typename Handler>
+bool load_object(
+    const Json& section, const char* section_name, Handler handler, std::string& error
+) {
+    if (!section.is_object()) {
+        error = "\"" + std::string(section_name) + "\" must be an object";
+        return false;
+    }
+    for (const auto& [key, v] : section.items()) {
+        if (!handler(key, v)) {
+            error = "unknown key \"" + key + "\" in \"" + section_name + "\"";
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 std::optional<Config> load_config_file(const std::string& path, std::string& error) {
@@ -65,91 +96,91 @@ std::optional<Config> load_config_file(const std::string& path, std::string& err
         return std::nullopt;
     }
 
+    Json root;
+    try {
+        // ignore_comments: plain JSON has no comment syntax, but a config file
+        // meant to be hand-edited needs one -- `//` and `/* */` stay legal.
+        root = Json::parse(in, /*cb=*/nullptr, /*allow_exceptions=*/true, /*ignore_comments=*/true);
+    } catch (const Json::parse_error& e) {
+        error = path + ": " + e.what();
+        return std::nullopt;
+    }
+
+    if (!root.is_object()) {
+        error = path + ": top level must be an object";
+        return std::nullopt;
+    }
+
     Config config;
-    enum class Section { kNone, kNode, kSlurm, kProbe, kSink };
-    Section section = Section::kNone;
-    std::string component; // valid when section is kProbe/kSink
+    try {
+        for (const auto& [section, value] : root.items()) {
+            bool ok = true;
+            std::string sub_error;
 
-    std::string raw_line;
-    size_t lineno = 0;
-    while (std::getline(in, raw_line)) {
-        ++lineno;
-        const std::string line = trim(strip_comment(raw_line));
-        if (line.empty())
-            continue;
-
-        auto fail = [&](const std::string& what) -> std::optional<Config> {
-            error = path + ":" + std::to_string(lineno) + ": " + what;
-            return std::nullopt;
-        };
-
-        if (line.front() == '[') {
-            if (line.back() != ']')
-                return fail("unterminated section header");
-
-            const std::string header = line.substr(1, line.size() - 2);
-            if (header == "node") {
-                section = Section::kNode;
-            } else if (header == "slurm") {
-                section = Section::kSlurm;
-            } else if (header.compare(0, 7, "probes.") == 0 && header.size() > 7) {
-                section = Section::kProbe;
-                component = header.substr(7);
-                config.probes.try_emplace(component);
-            } else if (header.compare(0, 6, "sinks.") == 0 && header.size() > 6) {
-                section = Section::kSink;
-                component = header.substr(6);
-                config.sinks.try_emplace(component);
+            if (section == "node") {
+                ok = load_object(
+                    value,
+                    "node",
+                    [&](const std::string& key, const Json& v) {
+                    if (key == "cluster")
+                        config.cluster = v.get<std::string>();
+                    else if (key == "node")
+                        config.node = v.get<std::string>();
+                    else if (key == "batch_size")
+                        config.batch_size = static_cast<size_t>(
+                            one_shot(stringify(v)).get_uint("v", config.batch_size)
+                        );
+                    else if (key == "flush_interval")
+                        config.flush_interval =
+                            one_shot(stringify(v)).get_duration("v", config.flush_interval);
+                    else if (key == "verbose")
+                        config.verbose = one_shot(stringify(v)).get_bool("v", config.verbose);
+                    else
+                        return false;
+                    return true;
+                    },
+                    sub_error);
+            } else if (section == "slurm") {
+                ok = load_object(
+                    value,
+                    "slurm",
+                    [&](const std::string& key, const Json& v) {
+                    if (key == "cgroup_root")
+                        config.cgroup_root = v.get<std::string>();
+                    else
+                        return false;
+                    return true;
+                    },
+                    sub_error);
+            } else if (section == "probes") {
+                if (!value.is_object()) {
+                    ok = false;
+                    sub_error = "\"probes\" must be an object";
+                } else {
+                    ok = load_components(value, "probes", config.probes, sub_error);
+                }
+            } else if (section == "sinks") {
+                if (!value.is_object()) {
+                    ok = false;
+                    sub_error = "\"sinks\" must be an object";
+                } else {
+                    ok = load_components(value, "sinks", config.sinks, sub_error);
+                }
             } else {
-                return fail("unknown section [" + header + "]");
+                ok = false;
+                sub_error = "unknown top-level key \"" + section + "\"";
             }
-            continue;
+
+            if (!ok) {
+                error = path + ": " + sub_error;
+                return std::nullopt;
+            }
         }
-
-        const size_t eq = line.find('=');
-        if (eq == std::string::npos)
-            return fail("expected 'key = value'");
-
-        const std::string key = trim(line.substr(0, eq));
-        const std::string value = unquote(trim(line.substr(eq + 1)));
-        if (key.empty())
-            return fail("empty key");
-
-        switch (section) {
-        case Section::kNone:
-            return fail("'" + key + "' outside any [section]");
-
-        case Section::kNode:
-            if (key == "cluster")
-                config.cluster = value;
-            else if (key == "node")
-                config.node = value;
-            else if (key == "batch_size")
-                config.batch_size =
-                    static_cast<size_t>(one_shot(value).get_uint("v", config.batch_size));
-            else if (key == "flush_interval")
-                config.flush_interval = one_shot(value).get_duration("v", config.flush_interval);
-            else if (key == "verbose")
-                config.verbose = one_shot(value).get_bool("v", config.verbose);
-            else
-                return fail("unknown key '" + key + "' in [node]");
-            break;
-
-        case Section::kSlurm:
-            if (key == "cgroup_root")
-                config.cgroup_root = value;
-            else
-                return fail("unknown key '" + key + "' in [slurm]");
-            break;
-
-        case Section::kProbe:
-            config.probes[component].set(key, value);
-            break;
-
-        case Section::kSink:
-            config.sinks[component].set(key, value);
-            break;
-        }
+    } catch (const Json::exception& e) {
+        // A value of the wrong JSON type for the key it's under (e.g. cluster
+        // as a number) -- nlohmann's own message already names the key.
+        error = path + ": " + e.what();
+        return std::nullopt;
     }
 
     drop_disabled(config.probes);

@@ -171,36 +171,48 @@ to stream it anyway.
 
 ## 7. Configuration
 
-`--config /etc/slurm-tracer/config.toml`, loaded once at startup (any other flag
-on the command line overrides what the file set, per-field):
+`--config /etc/slurm-tracer/config.json`, loaded once at startup (any other flag
+on the command line overrides what the file set, per-field). Plain JSON, parsed
+with comments allowed (`//` and `/* */`) despite that not being standard JSON,
+since a hand-edited ops config without comments is worse than one that bends
+the spec slightly:
 
-```toml
-[node]
-cluster        = "prod"
-flush_interval = "10s"
+```json5
+{
+  "node": {
+    "cluster": "prod",
+    "flush_interval": "10s"
+  },
 
-[slurm]
-# Auto-discovered when omitted; override for IgnoreSystemd or a custom mountpoint.
-cgroup_root = "/sys/fs/cgroup/system.slice/slurmstepd.scope"
+  "slurm": {
+    // Auto-discovered when omitted; override for IgnoreSystemd or a custom mountpoint.
+    "cgroup_root": "/sys/fs/cgroup/system.slice/slurmstepd.scope"
+  },
 
-[probes.proc_lifecycle]
+  "probes": {
+    "proc_lifecycle": {}
+  },
 
-[sinks.stdout_json]
-
-[sinks.http]
-endpoint = "http://ingest.internal:8080/v1/telemetry"
-timeout  = "5s"
+  "sinks": {
+    "stdout_json": {},
+    "http": {
+      "endpoint": "http://ingest.internal:8080/v1/telemetry",
+      "timeout": "5s"
+    }
+  }
+}
 ```
 
-A `[probes.*]`/`[sinks.*]` section's mere presence is what turns it on — `enabled
-= false` is the one key every section understands, letting a node disable
-something by name without deleting the section (and its other settings) outright.
-Naming no `[probes.*]` at all, not even a disabled one, means every probe the
-build contains; the same for `[sinks.*]`. That "everything, until you name one
-thing" default is why a bare `[probes.proc_lifecycle]` with nothing under it is
-enough to opt in — the reverse of `enabled = false`, not its counterpart.
+A `"probes"`/`"sinks"` member's mere presence is what turns it on — `"enabled":
+false` is the one key every member understands, letting a node disable
+something by name without deleting the object (and its other settings)
+outright. Naming no `"probes"` object at all, not even one holding a disabled
+member, means every probe the build contains; the same for `"sinks"`. That
+"everything, until you name one thing" default is why `"proc_lifecycle": {}`
+with nothing inside it is enough to opt in — the reverse of `"enabled": false`,
+not its counterpart.
 
-Beyond that one shared key, a section's contents belong entirely to its plugin
+Beyond that one shared key, a member's contents belong entirely to its plugin
 (`core/config.h`'s `ComponentConfig`) — the loader stores whatever it finds and
 never interprets it, so a plugin can add a setting without this file's format
 changing.

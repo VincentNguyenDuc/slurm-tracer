@@ -1,13 +1,16 @@
-// Loads a Config from a TOML file, per docs/DESIGN.md §7.
+// Loads a Config from a JSON file, per docs/DESIGN.md §7.
 //
 // core/config.h is deliberately format-agnostic (see its own header comment);
-// this is where that format lives instead. Deliberately not a general TOML
-// parser -- only the subset §7 actually uses: `[section]` and
-// `[section.name]` headers, `key = value` pairs, bare/quoted/bool values,
-// `#` comments. Anything structurally outside that (a stray key with no
-// section, an unterminated header, a section this loader does not recognise)
-// is a startup failure, not a best-effort skip -- a malformed file is a
-// mistake worth catching before the daemon runs one probe.
+// this is where that format lives instead. The schema is a direct translation
+// of §7's shape: a "node" object, a "slurm" object, and "probes"/"sinks"
+// objects keyed by component name, each holding that component's own flat
+// key/value settings. Parsed with nlohmann::json's ignore_comments option, so
+// `//` and `/* */` comments stay legal despite plain JSON having no comment
+// syntax. Anything structurally outside that shape (a key this loader does
+// not recognise inside "node"/"slurm", a top-level key that isn't one of the
+// four sections, the wrong JSON type where an object was expected) is a
+// startup failure, not a best-effort skip -- a malformed file is a mistake
+// worth catching before the daemon runs one probe.
 //
 // A key this loader *does* recognise but a component does not is a different
 // matter and not this file's business: ComponentConfig hands it to the

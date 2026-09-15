@@ -1,7 +1,9 @@
 #include "daemon.h"
 
+#include <spdlog/fmt/fmt.h>
+#include <spdlog/spdlog.h>
+
 #include <chrono>
-#include <iostream>
 #include <utility>
 
 #include "core/attribution.h"
@@ -45,7 +47,7 @@ void Daemon::start_sinks() {
     for (const auto& [name, config] : selected(config_.sinks, registries_.sinks)) {
         auto sink = registries_.sinks.create(name, config);
         if (!sink) {
-            std::cerr << "sink " << name << ": not in this build, skipped\n";
+            spdlog::warn("sink {}: not in this build, skipped", name);
             continue;
         }
         sinks_.push_back(std::move(sink));
@@ -56,7 +58,7 @@ void Daemon::start_probes() {
     for (const auto& [name, config] : selected(config_.probes, registries_.probes)) {
         auto probe = registries_.probes.create(name, config);
         if (!probe) {
-            std::cerr << "probe " << name << ": not in this build, skipped\n";
+            spdlog::warn("probe {}: not in this build, skipped", name);
             continue;
         }
 
@@ -71,11 +73,13 @@ void Daemon::start_probes() {
         // with an older kernel should lose one probe, not all observability.
         if (!probe->open(config) || !probe->load() || !probe->attach()) {
             if (probe->critical()) {
-                std::cerr << "probe " << name
-                          << ": disabled -- this is the attribution mechanism, every "
-                             "record will now be unattributed\n";
+                spdlog::warn(
+                    "probe {}: disabled -- this is the attribution mechanism, every "
+                    "record will now be unattributed",
+                    name
+                );
             } else {
-                std::cerr << "probe " << name << ": disabled\n";
+                spdlog::warn("probe {}: disabled", name);
             }
             continue;
         }
@@ -93,8 +97,9 @@ bool Daemon::start() {
     if (auto root = discover_cgroup_root(config_.cgroup_root)) {
         auto candidate = std::make_unique<CgroupResolver>(*root);
         if (candidate->start()) {
-            std::cerr << "attribution: cgroup root " << *root << ", " << candidate->size()
-                      << " cgroups known at startup\n";
+            spdlog::info(
+                "attribution: cgroup root {}, {} cgroups known at startup", *root, candidate->size()
+            );
             resolver_ = std::move(candidate);
         }
     } else {
@@ -102,12 +107,12 @@ bool Daemon::start() {
         // still null. The deployment is responsible for not starting this
         // daemon before slurmd has created the cgroup scope -- see
         // entrypoint-worker.sh's wait_for_cgroup_root.
-        std::cerr << "attribution: no Slurm cgroup root found; refusing to start\n";
+        spdlog::error("attribution: no Slurm cgroup root found; refusing to start");
     }
 
     start_sinks();
     if (sinks_.empty()) {
-        std::cerr << "no sinks configured; records would go nowhere\n";
+        spdlog::error("no sinks configured; records would go nowhere");
         return false;
     }
 
@@ -121,22 +126,24 @@ bool Daemon::start() {
     popt.cluster = config_.cluster;
     popt.batch_size = config_.batch_size;
     popt.flush_interval = config_.flush_interval;
-    popt.verbose = config_.verbose;
 
     pipeline_ = std::make_unique<Pipeline>(popt, sink_ptrs);
     pipeline_->set_resolver(resolver_.get());
 
     start_probes();
     if (probes_.empty()) {
-        std::cerr << "no probes running; nothing to collect\n";
+        spdlog::error("no probes running; nothing to collect");
         return false;
     }
     return true;
 }
 
 int Daemon::run(const volatile std::sig_atomic_t& stop) {
-    std::cerr << "attached; streaming records for cluster=" << config_.cluster
-              << " node=" << config_.node << " (Ctrl-C to stop)\n";
+    spdlog::info(
+        "attached; streaming records for cluster={} node={} (Ctrl-C to stop)",
+        config_.cluster,
+        config_.node
+    );
 
     int rc = EXIT_SUCCESS;
 
@@ -163,17 +170,23 @@ int Daemon::run(const volatile std::sig_atomic_t& stop) {
 }
 
 void Daemon::report_shutdown() const {
-    std::cerr << "shutting down: " << pipeline_->stats().records << " events";
+    std::string msg = fmt::format("shutting down: {} events", pipeline_->stats().records);
     if (resolver_) {
         const auto& s = resolver_->stats();
-        std::cerr << ", attribution hits=" << s.hits << " misses=" << s.misses
-                  << " stale=" << s.stale << " rescans=" << s.rescans;
+        msg += fmt::format(
+            ", attribution hits={} misses={} stale={} rescans={}",
+            s.hits,
+            s.misses,
+            s.stale,
+            s.rescans
+        );
     }
 
     uint64_t dropped = 0;
     for (const auto& sink : sinks_)
         dropped += sink->dropped();
-    std::cerr << ", dropped batches=" << dropped << "\n";
+    msg += fmt::format(", dropped batches={}", dropped);
+    spdlog::info(msg);
 }
 
 } // namespace slurm_tracer

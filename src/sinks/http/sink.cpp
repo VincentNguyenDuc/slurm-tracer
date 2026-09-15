@@ -5,11 +5,12 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <spdlog/spdlog.h>
+
 #include <cctype>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
 #include <string>
 
 #include "core/registry.h"
@@ -280,8 +281,11 @@ void register_http(Registries& r) {
         const std::string endpoint = config.get("endpoint", "");
         const auto parsed = parse_http_endpoint(endpoint);
         if (!parsed) {
-            std::cerr << "sink http: 'endpoint' is not a valid http:// URL (" << endpoint
-                      << "); expected http://host[:port][/path]\n";
+            spdlog::error(
+                "sink http: 'endpoint' is not a valid http:// URL ({}); expected "
+                "http://host[:port][/path]",
+                endpoint
+            );
             return nullptr;
         }
 

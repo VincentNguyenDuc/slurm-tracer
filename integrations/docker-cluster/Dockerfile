@@ -21,6 +21,8 @@ RUN apt-get update \
         libelf-dev \
         zlib1g-dev \
         pkg-config \
+        libspdlog-dev \
+        nlohmann-json3-dev \
         slurmd \
         slurmctld \
         slurm-client \

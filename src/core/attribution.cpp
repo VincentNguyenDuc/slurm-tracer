@@ -6,12 +6,13 @@
 #include <glob.h>
 #include <sys/stat.h>
 
+#include <spdlog/spdlog.h>
+
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <fstream>
-#include <iostream>
 #include <vector>
 
 namespace slurm_tracer {
@@ -119,7 +120,7 @@ std::optional<std::string> discover_cgroup_root(
     if (!override_path.empty()) {
         if (is_dir(override_path))
             return override_path;
-        std::cerr << "configured cgroup root does not exist: " << override_path << "\n";
+        spdlog::error("configured cgroup root does not exist: {}", override_path);
         return std::nullopt;
     }
 
@@ -186,7 +187,7 @@ CgroupResolver::~CgroupResolver() = default;
 
 bool CgroupResolver::start() {
     if (!is_dir(root_)) {
-        std::cerr << "cgroup root is not a directory: " << root_ << "\n";
+        spdlog::warn("cgroup root is not a directory: {}", root_);
         return false;
     }
 

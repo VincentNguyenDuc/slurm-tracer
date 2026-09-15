@@ -2,8 +2,9 @@
 
 #include <bpf/libbpf.h>
 
+#include <spdlog/spdlog.h>
+
 #include <cerrno>
-#include <iostream>
 
 #include "core/probe.h"
 
@@ -34,7 +35,7 @@ bool EventLoop::add(Probe& probe, RecordEmitter& out) {
     const bool ok = rb_ == nullptr ? (rb_ = ring_buffer__new(fd, callback, ctx, nullptr)) != nullptr
                                    : ring_buffer__add(rb_, fd, callback, ctx) == 0;
     if (!ok) {
-        std::cerr << "probe " << probe.name() << ": failed to arm ring buffer\n";
+        spdlog::warn("probe {}: failed to arm ring buffer", probe.name());
         bindings_.pop_back();
         return false;
     }
@@ -47,7 +48,7 @@ bool EventLoop::poll(std::chrono::milliseconds timeout) {
 
     const int err = ring_buffer__poll(rb_, static_cast<int>(timeout.count()));
     if (err < 0 && err != -EINTR) {
-        std::cerr << "ring buffer poll failed: " << err << "\n";
+        spdlog::error("ring buffer poll failed: {}", err);
         return false;
     }
     return true;

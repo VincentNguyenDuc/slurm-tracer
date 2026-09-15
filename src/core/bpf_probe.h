@@ -11,7 +11,7 @@
 
 #include <bpf/libbpf.h>
 
-#include <iostream>
+#include <spdlog/spdlog.h>
 
 #include "core/probe.h"
 
@@ -73,9 +73,7 @@ protected:
     Skel* skel() const { return skel_; }
 
 private:
-    void fail(const char* stage) const {
-        std::cerr << "probe " << name() << ": failed to " << stage << "\n";
-    }
+    void fail(const char* stage) const { spdlog::warn("probe {}: failed to {}", name(), stage); }
 
     Ops ops_;
     Skel* skel_ = nullptr;

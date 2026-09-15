@@ -4,6 +4,8 @@
 // embedded BPF object does not leak into anything that merely wants the
 // translation. See translate.h for the part worth testing.
 
+#include <spdlog/spdlog.h>
+
 #include <memory>
 
 #include "core/bpf_probe.h"
@@ -32,7 +34,7 @@ public:
 
     void on_event(const void* data, size_t len, RecordEmitter& out) override {
         if (len < sizeof(st_proc_event)) {
-            std::cerr << "proc_lifecycle: short event, " << len << " bytes\n";
+            spdlog::warn("proc_lifecycle: short event, {} bytes", len);
             return;
         }
 

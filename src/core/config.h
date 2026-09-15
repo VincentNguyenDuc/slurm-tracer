@@ -1,9 +1,10 @@
 // Configuration, per docs/DESIGN.md §7.
 //
 // Deliberately a plain struct with string-keyed per-component sections rather
-// than anything that knows about TOML. A plugin receives a ComponentConfig and
-// nothing else, so the file format stays an implementation detail of the loader
-// and adding one never touches the plugin contract.
+// than anything that knows about the config file format (core/config_file.h).
+// A plugin receives a ComponentConfig and nothing else, so the file format
+// stays an implementation detail of the loader and adding one never touches
+// the plugin contract.
 
 #pragma once
 
@@ -14,7 +15,7 @@
 
 namespace slurm_tracer {
 
-// Settings for one probe or one sink: [probes.proc_lifecycle] some_key = value.
+// Settings for one probe or one sink: "probes": {"proc_lifecycle": {"some_key": "value"}}.
 //
 // Values are kept as strings and converted on read. A component asks for what
 // it understands and supplies its own fallback, so an unknown key is inert
