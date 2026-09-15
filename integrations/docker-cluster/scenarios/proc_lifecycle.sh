@@ -1,7 +1,7 @@
 #!/bin/bash
 # Submits a plain 2-node job (exercises proc_lifecycle) and records its job id
-# and output snapshot to out/scenarios/proc_lifecycle/. Run by run.sh once the
-# cluster is up; not meant to be run standalone.
+# and output snapshot to $OUT_DIR/scenarios/proc_lifecycle/. Run by run.sh
+# once the cluster is up; not meant to be run standalone.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 

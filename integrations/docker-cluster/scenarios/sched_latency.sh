@@ -2,8 +2,8 @@
 # Submits a deliberately oversubscribed 2-node workload to give sched_latency
 # (an aggregating probe -- see docs/DESIGN.md §6) something to actually
 # bucket, and records its job id and output snapshot to
-# out/scenarios/sched_latency/. Run by run.sh once the cluster is up; not
-# meant to be run standalone.
+# $OUT_DIR/scenarios/sched_latency/. Run by run.sh once the cluster is up;
+# not meant to be run standalone.
 #
 # `srun --overcommit` only oversubscribes a *step* beyond its allocation's CPU
 # count, not a fresh allocation request -- asking a plain srun for more tasks

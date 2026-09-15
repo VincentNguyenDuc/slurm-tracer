@@ -1,7 +1,9 @@
 #!/bin/bash
 # Brings up a two-node Slurm cluster in docker compose, runs slurm-tracer as a
 # daemon on each worker, runs every scenario in scenarios/ against it, and
-# tears the cluster back down -- leaving their raw output under out/
+# tears the cluster back down -- leaving their raw output under
+# out/<branch>_<commit>_<timestamp>/, so runs from different branches or
+# commits don't clobber each other and stay easy to tell apart.
 #
 # Requires a Linux kernel with BTF (/sys/kernel/btf/vmlinux) and cgroup v2
 # reachable from Docker -- true of a normal Docker Desktop or native Linux
@@ -37,9 +39,15 @@ trap cleanup EXIT
 
 log() { echo "run.sh: $*"; }
 
-log "resetting live/ and out/"
-mkdir -p secrets live/c1 live/c2 live/collector out/scenarios
-rm -rf out/scenarios/*
+# Branch names can contain "/" (e.g. feature/foo), which isn't safe as a
+# path component -- flatten it. Falls back to "detached"/"unknown" outside a
+# normal branch checkout or git repo (e.g. CI checking out a bare commit).
+BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null | tr '/' '-')"
+COMMIT="$(git rev-parse --short HEAD 2>/dev/null)"
+export OUT_DIR="out/${BRANCH:-detached}_${COMMIT:-unknown}_$(date +%Y%m%d_%H%M%S)"
+
+log "resetting live/, writing this run's output to $OUT_DIR"
+mkdir -p secrets live/c1 live/c2 live/collector "$OUT_DIR/scenarios"
 if [ ! -s secrets/munge.key ]; then
     log "generating munge key"
     head -c 1024 /dev/urandom > secrets/munge.key
@@ -130,3 +138,5 @@ for scenario in scenarios/*.sh; do
     log "-- $scenario"
     "$scenario"
 done
+
+log "done; output under $OUT_DIR"

@@ -63,11 +63,14 @@ Slurm, munge) lives in the image.
    Each scenario ends by calling `record_scenario` (`scenarios/lib.sh`),
    which snapshots its job id, the raw command output, and the *current*
    contents of every node's stdout_json output and the collector's
-   http-received output (`live/`) into its own `out/scenarios/<name>/` folder
-   (`job.json`, `c1.jsonl`, `c2.jsonl`, `collector.jsonl`) -- self-contained,
-   so it can be analyzed without cross-referencing which records in the
-   shared `live/<node>/<node>.jsonl` belong to which job. `out/` ends up
-   holding only these snapshots -- `live/` is scratch. A scenario's only job
+   http-received output (`live/`) into its own
+   `out/<branch>_<commit>_<timestamp>/scenarios/<name>/` folder (`job.json`,
+   `c1.jsonl`, `c2.jsonl`, `collector.jsonl`) -- self-contained, so it can be
+   analyzed without cross-referencing which records in the shared
+   `live/<node>/<node>.jsonl` belong to which job. Each run gets its own
+   `out/<branch>_<commit>_<timestamp>/` directory so runs from different
+   branches or commits don't clobber each other -- `live/` is scratch. A
+   scenario's only job
    is to drive the cluster and record what happened; it makes no pass/fail
    judgment. Add a new probe's workload by dropping another script in
    `scenarios/` -- `run.sh` picks it up automatically.
@@ -99,12 +102,13 @@ scripts/entrypoint-*.sh    Per-role container entrypoints.
 run.sh                     Brings the cluster up, runs scenarios/, tears it down.
 scenarios/lib.sh           record_scenario: snapshots a scenario's job metadata
                            and current live/ node/collector output into
-                           out/scenarios/<name>/. Sourced, not run.
+                           $OUT_DIR/scenarios/<name>/. Sourced, not run.
 scenarios/*.sh             One workload each; drives the cluster, then calls
                            record_scenario. No pass/fail logic.
 secrets/, live/, out/,     Generated; gitignored. live/<node> and
 build/                     live/collector are the raw, cumulative bind-mount
                            targets for the whole run (docker-compose.yml);
-                           out/scenarios/<name>/ is the per-scenario snapshot
-                           actually worth keeping.
+                           out/<branch>_<commit>_<timestamp>/scenarios/<name>/
+                           is the per-scenario snapshot actually worth keeping
+                           -- run.sh sets OUT_DIR to that path per run.
 ```
