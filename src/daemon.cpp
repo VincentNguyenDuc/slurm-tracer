@@ -10,7 +10,6 @@ namespace slurm_tracer {
 namespace {
 
 constexpr auto kPollTimeout = std::chrono::milliseconds(100);
-constexpr auto kDiscoveryRetry = std::chrono::seconds(5);
 
 // Which plugins to run: what the config names, or everything this build
 // contains when it names none. A config that lists plugins is authoritative,
@@ -125,29 +124,11 @@ bool Daemon::start() {
     return true;
 }
 
-// slurmd may not have created the cgroup scope when we started. Keep looking, so
-// a node that boots the tracer first still attributes.
-void Daemon::retry_discovery() {
-    auto root = discover_cgroup_root(config_.cgroup_root);
-    if (!root)
-        return;
-
-    auto candidate = std::make_unique<CgroupResolver>(*root);
-    if (!candidate->start())
-        return;
-
-    std::cerr << "attribution: cgroup root appeared at " << *root << ", " << candidate->size()
-              << " cgroups known\n";
-    resolver_ = std::move(candidate);
-    pipeline_->set_resolver(resolver_.get());
-}
-
 int Daemon::run(const volatile std::sig_atomic_t& stop) {
     std::cerr << "attached; streaming records for cluster=" << config_.cluster
               << " node=" << config_.node << " (Ctrl-C to stop)\n";
 
     int rc = EXIT_SUCCESS;
-    auto last_discovery = std::chrono::steady_clock::now();
     auto last_probe_poll = std::chrono::steady_clock::now();
 
     while (stop == 0) {
@@ -156,21 +137,14 @@ int Daemon::run(const volatile std::sig_atomic_t& stop) {
             break;
         }
 
-        if (resolver_)
-            resolver_->tick();
-
-        const auto now = std::chrono::steady_clock::now();
-        if (!resolver_ && now - last_discovery >= kDiscoveryRetry) {
-            last_discovery = now;
-            retry_discovery();
+        if (!resolver_) {
+            rc = EXIT_FAILURE;
+            break;
         }
 
-        // Aggregating probes (DESIGN §6) flush their kernel-side maps here,
-        // once per interval, rather than being driven by the ring-buffer
-        // poll above. Reusing flush_interval rather than adding a second
-        // "poll_interval" knob: there is no reason an aggregate should be
-        // read on a different cadence than the batch it is about to ride out
-        // in.
+        resolver_->tick();
+
+        const auto now = std::chrono::steady_clock::now();
         if (now - last_probe_poll >= config_.flush_interval) {
             last_probe_poll = now;
             poll_probes();

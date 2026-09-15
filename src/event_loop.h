@@ -27,7 +27,7 @@ public:
     EventLoop& operator=(const EventLoop&) = delete;
 
     // Adds a probe's ring buffer. Probes that aggregate in-kernel report a
-    // ring_fd() of -1 and are simply not added — that is not an error.
+    // ring_fd() of -1 and are simply not added.
     // Returns false only when a probe offered a buffer that could not be armed.
     bool add(Probe& probe, RecordEmitter& out);
 

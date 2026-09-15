@@ -96,19 +96,14 @@ wait_for_idle() {
 }
 wait_for_idle
 
-# slurm-tracer retries cgroup-root discovery every 5s (src/daemon.cpp,
-# kDiscoveryRetry) and only starts attributing once it finds the scope
-# directory slurmd creates. Nodes going "idle" in sinfo says nothing about
-# that -- wait for each tracer to say so itself, or a job submitted too early
+# Wait for each tracer to found cgroup, or a job submitted too early
 # comes back with every record unattributed.
 wait_for_attribution() {
     local tries=30
     for i in $(seq 1 "$tries"); do
         local ready=1
         for node in "${NODES[@]}"; do
-            # Matches both of daemon.cpp's wordings: "cgroup root <path>, N
-            # cgroups known at startup" (found immediately) and "cgroup root
-            # appeared at <path>, ..." (found on a later retry).
+            # Matches daemon.cpp's wordings: "cgroup root <path>, N cgroups known at startup".
             docker compose exec -T "$node" grep -q 'attribution: cgroup root' "/var/log/slurm-tracer/${node}.log" 2>/dev/null || ready=0
         done
         [ "$ready" -eq 1 ] && return 0
