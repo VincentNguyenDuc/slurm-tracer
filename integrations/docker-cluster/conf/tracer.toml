@@ -5,6 +5,8 @@
 [node]
 cluster = "docker-test"
 
+[probes.cgroup_lifecycle]
+
 [probes.proc_lifecycle]
 
 [probes.sched_latency]

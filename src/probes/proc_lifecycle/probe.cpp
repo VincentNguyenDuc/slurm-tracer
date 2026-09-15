@@ -8,7 +8,7 @@
 
 #include "core/bpf_probe.h"
 #include "core/registry.h"
-#include "plugins/probes/proc_lifecycle/translate.h"
+#include "probes/proc_lifecycle/translate.h"
 #include "proc_lifecycle.skel.h"
 
 namespace slurm_tracer {

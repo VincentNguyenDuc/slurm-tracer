@@ -2,7 +2,7 @@
 //
 // Probes and sinks are constructed by name, so the daemon never mentions a
 // concrete plugin. Registration happens through registry_manifest.cpp, which
-// CMake generates from the set of plugins in the build — see
+// CMake generates from the set of probes/sinks in the build — see
 // cmake/StPlugin.cmake.
 //
 // Why generated rather than a REGISTER_PROBE static initialiser: the manifest

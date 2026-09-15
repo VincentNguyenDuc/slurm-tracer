@@ -1,4 +1,4 @@
-#include "plugins/sinks/null/sink.h"
+#include "sinks/null/sink.h"
 
 #include <memory>
 

@@ -1,4 +1,4 @@
-#include "plugins/probes/proc_lifecycle/translate.h"
+#include "probes/proc_lifecycle/translate.h"
 
 #include <cstring>
 #include <iostream>

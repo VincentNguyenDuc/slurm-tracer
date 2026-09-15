@@ -1,4 +1,4 @@
-#include "plugins/sinks/http/endpoint.h"
+#include "sinks/http/endpoint.h"
 
 #include <cctype>
 #include <cerrno>

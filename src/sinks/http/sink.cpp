@@ -1,4 +1,4 @@
-#include "plugins/sinks/http/sink.h"
+#include "sinks/http/sink.h"
 
 #include <netdb.h>
 #include <sys/socket.h>
@@ -13,7 +13,7 @@
 #include <string>
 
 #include "core/registry.h"
-#include "plugins/sinks/http/endpoint.h"
+#include "sinks/http/endpoint.h"
 
 namespace slurm_tracer {
 namespace {

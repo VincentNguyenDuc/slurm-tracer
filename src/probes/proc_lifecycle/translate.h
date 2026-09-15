@@ -9,7 +9,7 @@
 #pragma once
 
 #include "core/record.h"
-#include "plugins/probes/proc_lifecycle/proc_lifecycle_events.h"
+#include "probes/proc_lifecycle/proc_lifecycle_events.h"
 
 namespace slurm_tracer {
 

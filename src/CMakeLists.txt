@@ -17,9 +17,12 @@ add_library(st_core STATIC
 target_include_directories(st_core PUBLIC ${ST_INCLUDE_ROOT})
 target_link_libraries(st_core PUBLIC Threads::Threads)
 
-# Plugins declare themselves via add_st_probe()/add_st_sink(); the manifest that
-# registers them is generated from that set.
-add_subdirectory(plugins)
+add_subdirectory(probes/cgroup_lifecycle)
+add_subdirectory(probes/proc_lifecycle)
+add_subdirectory(probes/sched_latency)
+add_subdirectory(sinks/http)
+add_subdirectory(sinks/null)
+add_subdirectory(sinks/stdout_json)
 st_generate_plugin_manifest(ST_MANIFEST_SOURCE ST_PLUGIN_TARGETS)
 
 add_executable(slurm-tracer

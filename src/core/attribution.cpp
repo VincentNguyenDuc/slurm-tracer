@@ -4,9 +4,7 @@
 
 #include <dirent.h>
 #include <glob.h>
-#include <sys/inotify.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 #include <cerrno>
 #include <cstdlib>
@@ -18,10 +16,6 @@
 
 namespace slurm_tracer {
 namespace {
-
-// A rescan is bounded to once per this interval so that a burst of events for
-// an unknown cgroup cannot turn into a walk of the tree per event.
-constexpr uint64_t kRescanMinIntervalNs = 100ull * 1000000ull; // 100 ms
 
 std::vector<std::string> split_path(const std::string& path) {
     std::vector<std::string> parts;
@@ -71,13 +65,15 @@ std::string trim(const std::string& s) {
     return s.substr(b, e - b + 1);
 }
 
-// When the cgroup directory was created, on CLOCK_MONOTONIC.
+// When the cgroup directory was created, on CLOCK_MONOTONIC. Only needed for
+// the one-time startup bootstrap (scan()/add_dir()): a cgroup discovered
+// afterwards, through the cgroup_lifecycle probe's on_created(), carries the
+// kernel's own bpf_ktime_get_ns() timestamp from the moment of creation
+// instead, no conversion required.
 //
 // This must be the directory's own creation time, not the moment we happened to
-// notice it. We routinely discover a cgroup *because* an event from it arrived
-// and missed; timestamping the entry with "now" would make every such entry
-// look newer than the event that found it, and the reuse guard below would
-// reject them all.
+// notice it, or the reuse guard below would reject every event that arrived
+// for it before the bootstrap scan got around to seeing it.
 uint64_t created_from_ctime(const struct stat& st) {
     const uint64_t ctime_realtime = static_cast<uint64_t>(st.st_ctim.tv_sec) * 1000000000ull +
                                     static_cast<uint64_t>(st.st_ctim.tv_nsec);
@@ -186,24 +182,13 @@ CgroupResolver::CgroupResolver(std::string root, uint64_t grace_ns)
     : root_(std::move(root))
     , grace_ns_(grace_ns) {}
 
-CgroupResolver::~CgroupResolver() {
-    if (inotify_fd_ >= 0)
-        ::close(inotify_fd_);
-}
+CgroupResolver::~CgroupResolver() = default;
 
 bool CgroupResolver::start() {
     if (!is_dir(root_)) {
         std::cerr << "cgroup root is not a directory: " << root_ << "\n";
         return false;
     }
-
-    // inotify is the fast path for new steps. It is not required for
-    // correctness — resolve() rescans on a miss — so a failure here degrades
-    // rather than aborts.
-    inotify_fd_ = ::inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
-    if (inotify_fd_ < 0)
-        std::cerr << "inotify_init1 failed (" << std::strerror(errno)
-                  << "); falling back to rescan-on-miss\n";
 
     scan();
     return true;
@@ -218,48 +203,24 @@ void CgroupResolver::add_dir(const std::string& abs_path) {
     // bridge between the kernel-side stamp and Slurm's job identity.
     const uint64_t cgroup_id = static_cast<uint64_t>(st.st_ino);
 
-    const std::string relative =
-        abs_path.size() > root_.size() ? abs_path.substr(root_.size() + 1) : std::string{};
-    auto attr = parse_cgroup_path(relative);
+    auto attr = parse_cgroup_path(abs_path);
     if (!attr)
         return; // not job work — slurmstepd's own cgroup, for instance
 
-    const uint64_t created_ns = created_from_ctime(st);
-
-    auto it = entries_.find(cgroup_id);
-    if (it != entries_.end()) {
-        // Already known. A different path, or a resurrected entry, means the
-        // inode was recycled: adopt the new identity and its creation time so
-        // the reuse guard measures against the *new* cgroup.
-        if (it->second.removed_ns != 0 || it->second.path != abs_path) {
-            it->second.attr = *attr;
-            it->second.path = abs_path;
-            it->second.created_ns = created_ns;
-            it->second.removed_ns = 0;
-        }
-        return;
-    }
-
     Entry e;
     e.attr = *attr;
-    e.path = abs_path;
-    e.created_ns = created_ns;
-    entries_.emplace(cgroup_id, std::move(e));
+    e.created_ns = created_from_ctime(st);
+    entries_.insert_or_assign(cgroup_id, std::move(e));
 }
 
-// Walks `dir` and everything under it, recording and watching each directory.
-//
-// Adding an inotify watch is inherently racy: children created between the
-// mkdir and inotify_add_watch never fire IN_CREATE. Enumerating the subtree
-// immediately after arming the watch is what closes that hole, so every newly
-// created directory goes through here rather than through watch_dir() alone.
+// Walks `dir` and everything under it. Bootstrap only -- called once, from
+// start(). Anything created after this point arrives through on_created().
 void CgroupResolver::add_subtree(const std::string& dir) {
     std::vector<std::string> stack{dir};
     while (!stack.empty()) {
         const std::string current = std::move(stack.back());
         stack.pop_back();
 
-        watch_dir(current);
         if (current != root_)
             add_dir(current);
 
@@ -281,58 +242,31 @@ void CgroupResolver::add_subtree(const std::string& dir) {
     }
 }
 
-void CgroupResolver::watch_dir(const std::string& abs_path) {
-    if (inotify_fd_ < 0)
-        return;
-    const int wd = ::inotify_add_watch(inotify_fd_, abs_path.c_str(), IN_CREATE | IN_DELETE);
-    if (wd >= 0)
-        watches_[wd] = abs_path;
-}
-
 void CgroupResolver::scan() {
     add_subtree(root_);
-    last_rescan_ns_ = monotonic_ns();
     ++stats_.rescans;
 }
 
-void CgroupResolver::drain_inotify() {
-    if (inotify_fd_ < 0)
-        return;
+void CgroupResolver::on_created(uint64_t cgroup_id, const std::string& path, uint64_t created_ns) {
+    auto attr = parse_cgroup_path(path);
+    if (!attr)
+        return; // not job work — slurmstepd's own cgroup, for instance
 
-    // inotify_event is variable-length; the buffer must hold at least one
-    // maximum-length event.
-    alignas(inotify_event) char buf[8192];
-    for (;;) {
-        const ssize_t n = ::read(inotify_fd_, buf, sizeof(buf));
-        if (n <= 0)
-            return; // EAGAIN when drained
+    // A cgroup_mkdir event always names a cgroup that was just created, so
+    // this unconditionally replaces whatever (possibly stale, possibly
+    // recycled-inode) entry was there before.
+    Entry e;
+    e.attr = *attr;
+    e.created_ns = created_ns;
+    entries_.insert_or_assign(cgroup_id, std::move(e));
+}
 
-        for (ssize_t off = 0; off < n;) {
-            const auto* ev = reinterpret_cast<const inotify_event*>(buf + off);
-            off += static_cast<ssize_t>(sizeof(inotify_event) + ev->len);
-
-            if (!(ev->mask & IN_ISDIR) || ev->len == 0)
-                continue;
-            const auto wit = watches_.find(ev->wd);
-            if (wit == watches_.end())
-                continue;
-
-            const std::string path = wit->second + "/" + ev->name;
-            if (ev->mask & IN_CREATE) {
-                // Not just this directory: slurmstepd creates the step, user
-                // and task levels back to back, and the deeper ones are already
-                // in place by the time this notification is handled.
-                add_subtree(path);
-            } else if (ev->mask & IN_DELETE) {
-                // Start the grace period rather than dropping the entry: exit
-                // events for this cgroup are very likely still in flight.
-                for (auto& [id, entry] : entries_) {
-                    if (entry.path == path && entry.removed_ns == 0)
-                        entry.removed_ns = monotonic_ns();
-                }
-            }
-        }
-    }
+void CgroupResolver::on_removed(uint64_t cgroup_id, uint64_t removed_ns) {
+    // Start the grace period rather than dropping the entry: exit events for
+    // this cgroup are very likely still in flight.
+    const auto it = entries_.find(cgroup_id);
+    if (it != entries_.end() && it->second.removed_ns == 0)
+        it->second.removed_ns = removed_ns;
 }
 
 void CgroupResolver::expire() {
@@ -345,26 +279,13 @@ void CgroupResolver::expire() {
     }
 }
 
-void CgroupResolver::tick() {
-    drain_inotify();
-    expire();
-}
+void CgroupResolver::tick() { expire(); }
 
 std::optional<Attribution> CgroupResolver::resolve(uint64_t cgroup_id, uint64_t event_ts_ns) {
-    auto it = entries_.find(cgroup_id);
-
+    const auto it = entries_.find(cgroup_id);
     if (it == entries_.end()) {
-        // An event can beat the inotify notification for the cgroup it came
-        // from. Rescan once — rate-limited — before declaring a miss.
-        const uint64_t now = monotonic_ns();
-        if (now - last_rescan_ns_ >= kRescanMinIntervalNs) {
-            scan();
-            it = entries_.find(cgroup_id);
-        }
-        if (it == entries_.end()) {
-            ++stats_.misses;
-            return std::nullopt;
-        }
+        ++stats_.misses;
+        return std::nullopt;
     }
 
     // Inode-reuse guard: cgroup ids are inode numbers and the kernel recycles

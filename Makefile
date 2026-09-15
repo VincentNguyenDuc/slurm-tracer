@@ -1,5 +1,5 @@
 # Recursive on purpose: sources live in nested directories (src/core,
-# src/plugins/probes/<name>, ...), and a non-recursive wildcard would silently
+# src/probes/<name>, ...), and a non-recursive wildcard would silently
 # stop matching them. The pre-commit hook runs `make format`, so a miss here
 # means formatting quietly stops being enforced rather than failing loudly.
 FMT_DIRS := src tests

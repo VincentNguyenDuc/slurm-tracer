@@ -1,4 +1,4 @@
-#include "plugins/sinks/stdout_json/sink.h"
+#include "sinks/stdout_json/sink.h"
 
 #include <string>
 

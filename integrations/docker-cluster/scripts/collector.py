@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# Stand-in ingest endpoint for the http sink (src/plugins/sinks/http). Appends
+# Stand-in ingest endpoint for the http sink (src/sinks/http). Appends
 # every POST body verbatim to a file the host can read, so test.sh can check
 # that what both workers shipped over the network matches what they wrote
 # locally via stdout_json. Every http sink batch already ends each record
-# with '\n' (see plugins/sinks/http/sink.cpp), so batches from either worker
+# with '\n' (see sinks/http/sink.cpp), so batches from either worker
 # concatenate into valid NDJSON with no extra framing needed here.
 import http.server
 import threading

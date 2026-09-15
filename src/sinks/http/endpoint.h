@@ -2,7 +2,7 @@
 //
 // Kept as a plain function over a plain struct, free of sockets, so it can be
 // tested without a listener anywhere -- same reasoning as
-// plugins/probes/proc_lifecycle/translate.h for keeping I/O out of the parts
+// probes/proc_lifecycle/translate.h for keeping I/O out of the parts
 // worth testing on their own.
 
 #pragma once

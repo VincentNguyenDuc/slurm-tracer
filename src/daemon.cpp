@@ -11,8 +11,8 @@ namespace {
 
 constexpr auto kPollTimeout = std::chrono::milliseconds(100);
 
-// Which plugins to run: what the config names, or everything this build
-// contains when it names none. A config that lists plugins is authoritative,
+// Which probes/sinks to run: what the config names, or everything this build
+// contains when it names none. A config that lists probes/sinks is authoritative,
 // including about the ones it leaves out.
 template <typename T>
 std::vector<std::pair<std::string, ComponentConfig>> selected(
@@ -60,12 +60,23 @@ void Daemon::start_probes() {
             continue;
         }
 
+        // Most probes ignore this; the one that is itself the attribution
+        // mechanism (cgroup_lifecycle) uses it instead of RecordEmitter.
+        if (resolver_)
+            probe->bind_resolver(*resolver_);
+
         // Failure isolation, per DESIGN §5. A probe that cannot load — missing
         // tracepoint, verifier rejection, kernel too old — is disabled and the
         // daemon keeps running with the rest. Clusters are heterogeneous; a node
         // with an older kernel should lose one probe, not all observability.
         if (!probe->open(config) || !probe->load() || !probe->attach()) {
-            std::cerr << "probe " << name << ": disabled\n";
+            if (probe->critical()) {
+                std::cerr << "probe " << name
+                          << ": disabled -- this is the attribution mechanism, every "
+                             "record will now be unattributed\n";
+            } else {
+                std::cerr << "probe " << name << ": disabled\n";
+            }
             continue;
         }
         if (!loop_.add(*probe, *pipeline_)) {
@@ -87,12 +98,11 @@ bool Daemon::start() {
             resolver_ = std::move(candidate);
         }
     } else {
-        // Not fatal. Unattributed data is worth more than no data, and this is
-        // exactly the case a rising unattributed rate is meant to surface. The
-        // poll loop keeps retrying: on a compute node the tracer usually starts
-        // at boot, before slurmd has created the scope directory at all.
-        std::cerr << "attribution: no Slurm cgroup root yet; retrying, records unattributed "
-                     "until then\n";
+        // Fatal, not degraded: run() below exits as soon as it sees resolver_
+        // still null. The deployment is responsible for not starting this
+        // daemon before slurmd has created the cgroup scope -- see
+        // entrypoint-worker.sh's wait_for_cgroup_root.
+        std::cerr << "attribution: no Slurm cgroup root found; refusing to start\n";
     }
 
     start_sinks();
