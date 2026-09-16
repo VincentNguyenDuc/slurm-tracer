@@ -41,20 +41,14 @@ wait_for_cgroup_root
 
 # slurm-tracer runs for the whole container lifetime, independent of any one
 # job, same as it would on a real compute node: it watches the cgroup tree and
-# attributes whatever jobs land on it. --cgroup-root is left to auto-discovery
-# (src/core/attribution.cpp) rather than pinned, so this exercises the same
-# discovery path a real deployment relies on.
+# attributes whatever jobs land on it.
 #
 # conf/tracer.json (identical on both workers) picks the probes and sinks,
-# including the http sink shipping to the collector service -- --node is
-# passed after --config specifically to also exercise that a flag on the
-# command line overrides what the file set (src/main.cpp).
+# including the http sink shipping to the collector service
 #
 # Started after slurmd so slurmd is always up first.
 /workspace/build/docker/slurm-tracer \
     --config /etc/slurm-tracer/config.json \
-    --node "$NODE" \
-    --verbose \
     >>"/var/log/slurm-tracer/${NODE}.jsonl" 2>>"/var/log/slurm-tracer/${NODE}.log" &
 TRACER_PID=$!
 

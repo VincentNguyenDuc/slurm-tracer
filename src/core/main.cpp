@@ -7,7 +7,7 @@
 #include <bpf/libbpf.h>
 #include <unistd.h>
 
-#include <spdlog/sinks/stdout_color_sinks.h> // declares stderr_color_mt() too
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
 #include <csignal>
@@ -52,98 +52,26 @@ int libbpf_print(enum libbpf_print_level level, const char* fmt, va_list args) {
 
 void usage(const char* argv0) {
     std::cerr << "usage: " << argv0 << " [options]\n"
-              << "  --config <path>       load a JSON config file first; flags below override it\n"
-              << "  --cluster <name>      cluster name stamped on every record (default: local)\n"
-              << "  --node <name>         node name (default: hostname)\n"
-              << "  --cgroup-root <path>  Slurm cgroup root; auto-discovered when omitted\n"
-              << "  --probes <a,b,...>    probes to run (default: every one in this build)\n"
-              << "  --sinks <a,b,...>     sinks to write to (default: every one in this build)\n"
-              << "  --batch-size <n>      records per batch handed to sinks (default: 64)\n"
-              << "  --flush-ms <n>        max ms a partial batch waits (default: 1000)\n"
-              << "  --verbose             log every resolver decision\n";
-}
-
-// "a,b,c" -> one empty ComponentConfig per name. Settings themselves come from
-// the config file; the command line only selects.
-void parse_names(
-    const std::string& list, std::map<std::string, slurm_tracer::ComponentConfig>& out
-) {
-    size_t start = 0;
-    while (start <= list.size()) {
-        const size_t comma = list.find(',', start);
-        const size_t end = comma == std::string::npos ? list.size() : comma;
-        if (end > start)
-            out.emplace(list.substr(start, end - start), slurm_tracer::ComponentConfig{});
-        if (comma == std::string::npos)
-            break;
-        start = end + 1;
-    }
-}
-
-std::string hostname() {
-    char buf[256]{};
-    if (::gethostname(buf, sizeof(buf) - 1) != 0)
-        return "unknown";
-    return buf;
+              << "  --config <path>       load a JSON config file first; flags below override it\n";
 }
 
 bool parse_args(int argc, char** argv, slurm_tracer::Config& config) {
-    for (int i = 1; i < argc; ++i) {
+    int i = 1;
+    while (i < argc) {
         const std::string arg = argv[i];
-        auto next = [&](const char* what) -> const char* {
-            if (i + 1 >= argc) {
-                spdlog::error("{} requires {}", arg, what);
-                return nullptr;
-            }
-            return argv[++i];
-        };
 
         if (arg == "--config") {
-            // Already applied in main(), before this loop runs, so that flags
-            // appearing anywhere on the command line override it rather than
-            // only the ones written after --config. Here it's just consumed
-            // so it isn't reported as an unknown option.
-            if (!next("a path"))
+            if (i + 1 >= argc) {
+                spdlog::error("--config: missing argument");
                 return false;
-        } else if (arg == "--cluster") {
-            const char* v = next("a name");
-            if (!v)
+            }
+            std::string error;
+            auto loaded = slurm_tracer::load_config_file(argv[++i], error);
+            if (!loaded) {
+                spdlog::error("--config: {}", error);
                 return false;
-            config.cluster = v;
-        } else if (arg == "--node") {
-            const char* v = next("a name");
-            if (!v)
-                return false;
-            config.node = v;
-        } else if (arg == "--cgroup-root") {
-            const char* v = next("a path");
-            if (!v)
-                return false;
-            config.cgroup_root = v;
-        } else if (arg == "--probes") {
-            const char* v = next("a comma-separated list");
-            if (!v)
-                return false;
-            parse_names(v, config.probes);
-        } else if (arg == "--sinks") {
-            const char* v = next("a comma-separated list");
-            if (!v)
-                return false;
-            parse_names(v, config.sinks);
-        } else if (arg == "--batch-size") {
-            const char* v = next("a count");
-            if (!v)
-                return false;
-            config.batch_size = std::strtoul(v, nullptr, 10);
-            if (config.batch_size == 0)
-                config.batch_size = 1;
-        } else if (arg == "--flush-ms") {
-            const char* v = next("a duration");
-            if (!v)
-                return false;
-            config.flush_interval = std::chrono::milliseconds(std::strtoul(v, nullptr, 10));
-        } else if (arg == "--verbose") {
-            config.verbose = true;
+            }
+            config = std::move(*loaded);
         } else if (arg == "-h" || arg == "--help") {
             usage(argv[0]);
             std::exit(EXIT_SUCCESS);
@@ -152,6 +80,7 @@ bool parse_args(int argc, char** argv, slurm_tracer::Config& config) {
             usage(argv[0]);
             return false;
         }
+        ++i;
     }
     return true;
 }
@@ -159,35 +88,13 @@ bool parse_args(int argc, char** argv, slurm_tracer::Config& config) {
 } // namespace
 
 int main(int argc, char** argv) {
-    // First thing, before anything else can log: diagnostics go to stderr
-    // (stdout stays free for a sink like stdout_json to write records to).
-    // The level is provisionally info until config is fully resolved below,
-    // since --verbose can come from either the config file or the flag.
     spdlog::set_default_logger(spdlog::stderr_color_mt("slurm-tracer"));
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
 
     slurm_tracer::Config config;
 
-    // Handled before the general parse below so it establishes a baseline
-    // that every other flag can then override, regardless of where --config
-    // itself appears in argv.
-    for (int i = 1; i + 1 < argc; ++i) {
-        if (std::string(argv[i]) != "--config")
-            continue;
-        std::string error;
-        if (auto loaded = slurm_tracer::load_config_file(argv[i + 1], error)) {
-            config = std::move(*loaded);
-        } else {
-            spdlog::error("--config: {}", error);
-            return EXIT_FAILURE;
-        }
-        break;
-    }
-
     if (!parse_args(argc, argv, config))
         return EXIT_FAILURE;
-    if (config.node.empty())
-        config.node = hostname();
 
     spdlog::set_level(config.verbose ? spdlog::level::debug : spdlog::level::info);
 

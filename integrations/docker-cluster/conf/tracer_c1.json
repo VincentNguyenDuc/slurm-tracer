@@ -1,0 +1,19 @@
+{
+    "node": {
+        "cluster": "docker-test",
+        "node": "c1"
+    },
+    "probes": {
+        "cgroup_lifecycle": {},
+        "oom": {},
+        "proc_lifecycle": {}
+    },
+
+    "sinks": {
+        "stdout_json": {},
+        "http": {
+            "endpoint": "http://collector:9000/v1/telemetry",
+            "timeout": "5s"
+        }
+    }
+}

@@ -47,7 +47,7 @@ services:
       - ../..:/workspace:ro
       - ./conf/slurm.conf:/etc/slurm/slurm.conf:ro
       - ./conf/cgroup.conf:/etc/slurm/cgroup.conf:ro
-      - ./conf/tracer.json:/etc/slurm-tracer/config.json:ro
+      - ./conf/tracer_c1.json:/etc/slurm-tracer/config.json:ro
       - ./secrets/munge.key:/secrets/munge.key:ro
       - ./scripts:/opt/st/scripts:ro
       - ./live/c1:/var/log/slurm-tracer
@@ -65,7 +65,7 @@ services:
       - ../..:/workspace:ro
       - ./conf/slurm.conf:/etc/slurm/slurm.conf:ro
       - ./conf/cgroup.conf:/etc/slurm/cgroup.conf:ro
-      - ./conf/tracer.json:/etc/slurm-tracer/config.json:ro
+      - ./conf/tracer_c2.json:/etc/slurm-tracer/config.json:ro
       - ./secrets/munge.key:/secrets/munge.key:ro
       - ./scripts:/opt/st/scripts:ro
       - ./live/c2:/var/log/slurm-tracer
