@@ -48,7 +48,8 @@ public:
     // One-time bootstrap: populates the map from the tree as it stands at
     // startup. Returns false only if the root cannot be read at all. Anything
     // created afterwards arrives through on_created()/on_removed() instead —
-    // see the cgroup_lifecycle probe, which is the only caller.
+    // see the cgroup watcher (attribution/cgroup_watcher.h), which is the
+    // only caller.
     bool start();
 
     // Resolves a cgroup id against the current map -- a plain lookup. Misses
@@ -59,7 +60,7 @@ public:
     // created after the event — the inode-reuse guard.
     std::optional<Attribution> resolve(uint64_t cgroup_id, uint64_t event_ts_ns);
 
-    // Called by the cgroup_lifecycle probe on cgroup_mkdir/cgroup_rmdir.
+    // Called by the cgroup watcher on cgroup_mkdir/cgroup_rmdir.
     // `path` is the absolute cgroup path and `ts_ns` is CLOCK_MONOTONIC
     // (bpf_ktime_get_ns()), the same clock domain as every other probe's
     // event timestamps -- no realtime<->monotonic conversion needed.

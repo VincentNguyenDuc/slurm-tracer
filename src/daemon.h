@@ -1,7 +1,8 @@
 // Assembly and the main loop.
 //
 // Owns the order things come up in and the order they come down in: resolver,
-// sinks, pipeline, probes, event loop. main() parses arguments and hands over.
+// cgroup watcher, sinks, pipeline, probes, event loop. main() parses arguments
+// and hands over.
 
 #pragma once
 
@@ -9,6 +10,7 @@
 #include <memory>
 #include <vector>
 
+#include "attribution/cgroup_watcher.h"
 #include "core/config.h"
 #include "core/pipeline.h"
 #include "core/probe.h"
@@ -37,12 +39,14 @@ public:
 private:
     void start_sinks();
     void start_probes();
+    void start_cgroup_watcher();
     void report_shutdown() const;
 
     Config config_;
     Registries registries_;
 
     std::unique_ptr<CgroupResolver> resolver_;
+    std::unique_ptr<CgroupWatcher> cgroup_watcher_;
     std::vector<std::unique_ptr<Sink>> sinks_;
     std::vector<std::unique_ptr<Probe>> probes_;
     std::unique_ptr<Pipeline> pipeline_;

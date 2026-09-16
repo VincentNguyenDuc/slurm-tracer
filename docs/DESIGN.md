@@ -34,19 +34,20 @@ stays sane, attributed to a specific job/step, at a cost sampling can't reach.
 ```
 kernel
  ┌───────────────────────────────────────────────────────┐
- │ probe modules (BPF CO-RE objects)                     │
- │   cgroup_lifecycle   proc_lifecycle                   │
- │        │ discrete events                               │
- │        ▼                                               │
- │   BPF_MAP_TYPE_RINGBUF                                │
- └────────┬────────────────────────────────────────────── ┘
+ │ probe modules (BPF CO-RE objects)     cgroup watcher  │
+ │   proc_lifecycle   oom   ...          (BPF CO-RE, too,│
+ │        │ discrete events              but not a probe)│
+ │        ▼                                     │        │
+ │   BPF_MAP_TYPE_RINGBUF   ◄───────────────────┘        │
+ └────────┬──────────────────────────────────────────────┘
           │ epoll
-──────────┼─────────────────────────────────────────────
+──────────┼──────────────────────────────────────────────
 userspace │
- ┌────────▼────────────────────────────────────────────┐
+ ┌────────▼──────────────────────────────────────────────┐
  │ collector core                                        │
  │   registry ....... probe lifecycle, failure isolation │
  │   attribution .... cgroup_id → job / step / task / uid│
+ │                     fed live by the cgroup watcher    │
  │   enrichment ..... cluster, node, partition, account  │
  │   batching                                            │
  └────────────────────────┬──────────────────────────────┘
@@ -95,17 +96,26 @@ integration) looks like:
 1. At startup, walk the discovered cgroup root. For each directory, `stat()` it — the
    inode number *is* the cgroup id — and parse job/step/task out of the path. Populate
    a flat hash map.
-2. Watch the root with `inotify` (`IN_CREATE`/`IN_DELETE` on directories) so new steps
-   land in the map without rescanning.
-3. On a cache miss — an event can beat the inotify notification — do a targeted
-   rescan. If it is still unknown, emit the record with a null `job_id` rather than
-   dropping it. Unattributed data is worth more than no data, and a rising
-   unattributed rate is itself the signal that the resolver is misconfigured.
-4. Retain entries for a grace period after the cgroup disappears: exit events arrive
-   while the cgroup is already being torn down.
-5. Guard against inode reuse — a recycled cgroup id must not inherit the previous
+2. From then on, a small BPF program — the **cgroup watcher**
+   (`src/attribution/`) — attaches to the `cgroup:cgroup_mkdir`/`cgroup:cgroup_rmdir`
+   tracepoints and feeds `CgroupResolver::on_created()`/`on_removed()` directly, so new
+   steps land in the map with no rescan and no race against a cache miss: those
+   tracepoints fire synchronously, in-kernel, as part of the mkdir/rmdir syscall
+   itself, before any other probe's event for that cgroup id could reach userspace.
+   This is not a plugin — attribution is mandatory, not a metric a cluster can opt out
+   of, so the daemon builds and attaches it directly next to the resolver itself
+   (`Daemon::start_cgroup_watcher()`), not through the probe registry. Losing it
+   (verifier rejection, kernel too old) does not stop the daemon; the resolver just
+   falls back to whatever its startup scan already saw, which is degraded, not fatal.
+3. Guard against inode reuse — a recycled cgroup id must not inherit the previous
    job's identity. Entries carry a creation timestamp; a record older than the entry
    is treated as a miss.
+4. Retain entries for a grace period after the cgroup disappears: exit events arrive
+   while the cgroup is already being torn down.
+5. A record whose cgroup id is not in the map — a genuine miss, not one of the above
+   — goes out with a null `job_id` rather than being dropped. Unattributed data is
+   worth more than no data, and a rising unattributed rate is itself the signal that
+   the resolver is misconfigured.
 
 **Why not resolve in the kernel?** We could walk `task->cgroups` and parse the path in
 BPF, or use `bpf_get_current_ancestor_cgroup_id()`. Both push string parsing into a

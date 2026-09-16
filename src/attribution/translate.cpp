@@ -1,4 +1,4 @@
-#include "probes/cgroup_lifecycle/translate.h"
+#include "attribution/translate.h"
 
 #include <spdlog/spdlog.h>
 
@@ -15,7 +15,7 @@ bool translate(const st_cgroup_event& e, CgroupLifecycleUpdate& out) {
         out.created = false;
         break;
     default:
-        spdlog::warn("cgroup_lifecycle: unknown event type {}", e.hdr.type);
+        spdlog::warn("cgroup watcher: unknown event type {}", e.hdr.type);
         return false;
     }
 

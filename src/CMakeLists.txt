@@ -17,7 +17,7 @@ add_library(st_core STATIC
 target_include_directories(st_core PUBLIC ${ST_INCLUDE_ROOT})
 target_link_libraries(st_core PUBLIC Threads::Threads spdlog::spdlog nlohmann_json::nlohmann_json)
 
-add_subdirectory(probes/cgroup_lifecycle)
+add_subdirectory(attribution)
 add_subdirectory(probes/oom)
 add_subdirectory(probes/proc_lifecycle)
 add_subdirectory(sinks/http)
@@ -33,6 +33,7 @@ add_executable(slurm-tracer
 )
 target_link_libraries(slurm-tracer
     PRIVATE
+        st_attribution
         ${ST_PLUGIN_TARGETS}
 )
 

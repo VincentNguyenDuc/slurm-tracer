@@ -15,7 +15,6 @@
 #include <cstddef>
 #include <string_view>
 
-#include "core/attribution.h"
 #include "core/config.h"
 #include "core/record.h"
 
@@ -35,18 +34,6 @@ public:
     virtual ~Probe() = default;
 
     virtual std::string_view name() const = 0;
-
-    // Most probes ignore this. One that needs direct access to cgroup
-    // attribution state, rather than going through RecordEmitter (the
-    // cgroup_lifecycle probe, which *is* the attribution mechanism), overrides
-    // it. The daemon calls it on every constructed probe, once, before
-    // start() -- see Daemon::start_probes().
-    virtual void bind_resolver(CgroupResolver&) {}
-
-    // True for a probe whose failure to load degrades every other probe, not
-    // just its own metric -- cgroup_lifecycle overrides this. The daemon uses
-    // it only to pick a log message; it does not change failure isolation.
-    virtual bool critical() const { return false; }
 
     // Lifecycle. Split because the failure modes are worth telling apart: load()
     // is where the verifier runs, attach() is where a missing tracepoint shows
