@@ -1,6 +1,6 @@
-#include "core/attribution.h"
+#include "core/attribution/attribution.h"
 
-#include "core/clock.h"
+#include "core/utilities/clock.h"
 
 #include <dirent.h>
 #include <glob.h>
@@ -68,7 +68,7 @@ std::string trim(const std::string& s) {
 
 // When the cgroup directory was created, on CLOCK_MONOTONIC. Only needed for
 // the one-time startup bootstrap (scan()/add_dir()): a cgroup discovered
-// afterwards, through the cgroup_lifecycle probe's on_created(), carries the
+// afterwards, through the cgroup watcher's on_created(), carries the
 // kernel's own bpf_ktime_get_ns() timestamp from the moment of creation
 // instead, no conversion required.
 //

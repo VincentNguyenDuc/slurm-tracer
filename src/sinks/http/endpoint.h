@@ -1,9 +1,9 @@
 // Parsing for the http sink's `endpoint` config value.
 //
 // Kept as a plain function over a plain struct, free of sockets, so it can be
-// tested without a listener anywhere -- same reasoning as
-// probes/proc_lifecycle/translate.h for keeping I/O out of the parts
-// worth testing on their own.
+// tested without a listener anywhere -- same reasoning every probe's
+// translation layer follows, for keeping I/O out of the parts worth testing
+// on their own.
 
 #pragma once
 
@@ -20,9 +20,9 @@ struct HttpEndpoint {
 };
 
 // Parses "http://host[:port][/path]". Only plain http is accepted: this sink
-// hand-rolls its own client rather than take on a TLS dependency (see
-// sink.h), so an https:// endpoint is rejected outright rather than silently
-// sent in the clear.
+// hand-rolls its own client rather than take on a TLS dependency, so an
+// https:// endpoint is rejected outright rather than silently sent in the
+// clear.
 std::optional<HttpEndpoint> parse_http_endpoint(const std::string& endpoint);
 
 } // namespace slurm_tracer

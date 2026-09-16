@@ -2,13 +2,13 @@
 //
 // This file is the only place the generated skeleton is included, so the
 // embedded BPF object does not leak into anything that merely wants the
-// translation. See translate.h for the part worth testing.
+// translation layer, which is the part worth testing.
 
 #include <spdlog/spdlog.h>
 
 #include <memory>
 
-#include "core/bpf_probe.h"
+#include "core/probe/bpf_probe.h"
 #include "core/registry.h"
 #include "probes/proc_lifecycle/translate.h"
 #include "proc_lifecycle.skel.h"
@@ -46,7 +46,7 @@ public:
 
 } // namespace
 
-// Called by the generated registry_manifest.cpp.
+// Called by the generated plugin manifest.
 void register_proc_lifecycle(Registries& r) {
     r.probes.add("proc_lifecycle", [](const ComponentConfig&) -> std::unique_ptr<Probe> {
         return std::make_unique<ProcLifecycleProbe>();

@@ -1,8 +1,10 @@
-// Cgroup lifecycle probe.
+// Cgroup watcher: the kernel side of attribution's own event feed.
 //
 // Attribution's whole job is mapping a kernel-side cgroup id to a Slurm job
-// (docs/DESIGN.md §4); this probe is what makes that mapping event-driven
-// instead of polling the filesystem and hoping the directory is still there.
+// (docs/DESIGN.md §4); this is what makes that mapping event-driven instead of
+// polling the filesystem and hoping the directory is still there. Not a probe
+// in the pluggable sense -- there is no telemetry here to disable, since every
+// other probe's records depend on this feed to be attributed at all.
 // cgroup:cgroup_mkdir and cgroup:cgroup_rmdir fire synchronously, in-kernel,
 // as part of the mkdir/rmdir syscall itself -- by the time this event reaches
 // userspace and CgroupResolver::on_created() runs, no other probe's event for
@@ -14,7 +16,7 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 
-#include "cgroup_lifecycle_events.h"
+#include "cgroup_watcher_events.h"
 
 char LICENSE[] SEC("license") = "GPL";
 

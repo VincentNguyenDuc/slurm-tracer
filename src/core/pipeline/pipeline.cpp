@@ -1,4 +1,4 @@
-#include "core/pipeline.h"
+#include "core/pipeline/pipeline.h"
 
 #include <pwd.h>
 
@@ -6,8 +6,8 @@
 
 #include <utility>
 
-#include "core/attribution.h"
-#include "core/clock.h"
+#include "core/attribution/attribution.h"
+#include "core/utilities/clock.h"
 
 namespace slurm_tracer {
 

@@ -6,7 +6,7 @@
 #include <chrono>
 #include <utility>
 
-#include "core/attribution.h"
+#include "core/attribution/attribution.h"
 
 namespace slurm_tracer {
 namespace {
@@ -39,6 +39,8 @@ Daemon::Daemon(Config config)
 }
 
 Daemon::~Daemon() {
+    if (cgroup_watcher_)
+        cgroup_watcher_->detach();
     for (const auto& probe : probes_)
         probe->detach();
 }
@@ -62,25 +64,12 @@ void Daemon::start_probes() {
             continue;
         }
 
-        // Most probes ignore this; the one that is itself the attribution
-        // mechanism (cgroup_lifecycle) uses it instead of RecordEmitter.
-        if (resolver_)
-            probe->bind_resolver(*resolver_);
-
-        // Failure isolation, per DESIGN §5. A probe that cannot load — missing
-        // tracepoint, verifier rejection, kernel too old — is disabled and the
-        // daemon keeps running with the rest. Clusters are heterogeneous; a node
+        // Failure isolation: a probe that cannot load — missing tracepoint,
+        // verifier rejection, kernel too old — is disabled and the daemon
+        // keeps running with the rest. Clusters are heterogeneous; a node
         // with an older kernel should lose one probe, not all observability.
         if (!probe->open(config) || !probe->load() || !probe->attach()) {
-            if (probe->critical()) {
-                spdlog::warn(
-                    "probe {}: disabled -- this is the attribution mechanism, every "
-                    "record will now be unattributed",
-                    name
-                );
-            } else {
-                spdlog::warn("probe {}: disabled", name);
-            }
+            spdlog::warn("probe {}: disabled", name);
             continue;
         }
         if (!loop_.add(*probe, *pipeline_)) {
@@ -88,6 +77,26 @@ void Daemon::start_probes() {
             continue;
         }
         probes_.push_back(std::move(probe));
+    }
+}
+
+void Daemon::start_cgroup_watcher() {
+    cgroup_watcher_ = std::make_unique<CgroupWatcher>(*resolver_);
+
+    // Not failure-isolated the way an ordinary probe is: losing this feed
+    // means every other probe's records go unattributed, not just one
+    // metric, so it gets its own explicit warning instead of start_probes()'s
+    // generic "disabled". The daemon still keeps running -- resolver_ falls
+    // back to whatever it saw in its startup scan, which is degraded, not
+    // fatal.
+    if (!cgroup_watcher_->open({}) || !cgroup_watcher_->load() || !cgroup_watcher_->attach()) {
+        spdlog::warn("cgroup watcher: failed to attach -- every record will now be unattributed");
+        cgroup_watcher_.reset();
+        return;
+    }
+    if (!loop_.add(*cgroup_watcher_, *pipeline_)) {
+        cgroup_watcher_->detach();
+        cgroup_watcher_.reset();
     }
 }
 
@@ -105,8 +114,7 @@ bool Daemon::start() {
     } else {
         // Fatal, not degraded: run() below exits as soon as it sees resolver_
         // still null. The deployment is responsible for not starting this
-        // daemon before slurmd has created the cgroup scope -- see
-        // entrypoint-worker.sh's wait_for_cgroup_root.
+        // daemon before slurmd has created the cgroup scope.
         spdlog::error("attribution: no Slurm cgroup root found; refusing to start");
     }
 
@@ -129,6 +137,9 @@ bool Daemon::start() {
 
     pipeline_ = std::make_unique<Pipeline>(popt, sink_ptrs);
     pipeline_->set_resolver(resolver_.get());
+
+    if (resolver_)
+        start_cgroup_watcher();
 
     start_probes();
     if (probes_.empty()) {

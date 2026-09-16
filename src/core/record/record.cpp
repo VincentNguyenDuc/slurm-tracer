@@ -1,4 +1,4 @@
-#include "core/record.h"
+#include "core/record/record.h"
 
 #include <nlohmann/json.hpp>
 
@@ -7,8 +7,8 @@ namespace {
 
 // nlohmann::ordered_json (not plain nlohmann::json, whose default backing map
 // sorts keys alphabetically) so the emitted field order keeps matching the
-// deliberate provenance -> attribution -> identity -> payload grouping from
-// docs/DESIGN.md §9, in the order fields are assigned below.
+// deliberate provenance -> attribution -> identity -> payload grouping, in the
+// order fields are assigned below.
 using Json = nlohmann::ordered_json;
 
 // Absent optionals are emitted as JSON null rather than omitted: a fixed key

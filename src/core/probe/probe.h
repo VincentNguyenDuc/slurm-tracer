@@ -1,4 +1,4 @@
-// Probe contract, per docs/DESIGN.md §5.
+// Probe contract.
 //
 // A probe contributes one .bpf.c, one class implementing this interface, and an
 // event struct beginning with st_event_hdr. It owns its own ring buffer, so the
@@ -15,9 +15,8 @@
 #include <cstddef>
 #include <string_view>
 
-#include "core/attribution.h"
-#include "core/config.h"
-#include "core/record.h"
+#include "core/config/config.h"
+#include "core/record/record.h"
 
 namespace slurm_tracer {
 
@@ -36,18 +35,6 @@ public:
 
     virtual std::string_view name() const = 0;
 
-    // Most probes ignore this. One that needs direct access to cgroup
-    // attribution state, rather than going through RecordEmitter (the
-    // cgroup_lifecycle probe, which *is* the attribution mechanism), overrides
-    // it. The daemon calls it on every constructed probe, once, before
-    // start() -- see Daemon::start_probes().
-    virtual void bind_resolver(CgroupResolver&) {}
-
-    // True for a probe whose failure to load degrades every other probe, not
-    // just its own metric -- cgroup_lifecycle overrides this. The daemon uses
-    // it only to pick a log message; it does not change failure isolation.
-    virtual bool critical() const { return false; }
-
     // Lifecycle. Split because the failure modes are worth telling apart: load()
     // is where the verifier runs, attach() is where a missing tracepoint shows
     // up. Any of them returning false disables this probe alone — a node with an
@@ -58,8 +45,8 @@ public:
     virtual void detach() = 0;
 
     // Every probe exposes a ring buffer for the event loop to poll and
-    // translate each event in on_event(). See DESIGN §6: this tree only
-    // supports the event-driven shape, not in-kernel aggregation.
+    // translate each event in on_event(). This tree only supports the
+    // event-driven shape, not in-kernel aggregation.
     virtual int ring_fd() const { return -1; }
     virtual void on_event(const void* data, size_t len, RecordEmitter&) = 0;
 };

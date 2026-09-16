@@ -1,4 +1,4 @@
-// Sink interface, per docs/DESIGN.md §8.
+// Sink interface.
 //
 // The core fans every batch out to all configured sinks. A sink must never
 // block the poll loop: backpressure from a slow destination must not reach the
@@ -12,7 +12,7 @@
 #include <string_view>
 #include <vector>
 
-#include "core/record.h"
+#include "core/record/record.h"
 
 namespace slurm_tracer {
 

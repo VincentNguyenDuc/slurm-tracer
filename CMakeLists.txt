@@ -19,7 +19,7 @@ include(BpfProgram)
 include(StPlugin)
 
 # The single include root. Every include below src/ is layer-qualified against
-# this: "core/record.h", "probes/<name>/...".
+# this: "core/record/record.h", "probes/<name>/...".
 set(ST_INCLUDE_ROOT "${CMAKE_SOURCE_DIR}/src")
 
 # libbpf comes from the distro (libbpf-dev): it must match the bpftool used for
@@ -35,7 +35,7 @@ find_package(Threads REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
-add_subdirectory(src)
+add_subdirectory(src/core)
 
 option(SLURM_TRACER_BUILD_TESTS "Build the test suite" ON)
 if(SLURM_TRACER_BUILD_TESTS)
