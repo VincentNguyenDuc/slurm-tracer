@@ -2,7 +2,7 @@
 //
 // This file parses arguments and hands over. It names no probe and no sink: the
 // daemon builds both from the registry, which the generated manifest populates
-// from whatever probes/sinks the build contains. See docs/DESIGN.md.
+// from whatever probes/sinks the build contains.
 
 #include <bpf/libbpf.h>
 #include <unistd.h>
@@ -18,8 +18,8 @@
 #include <string>
 #include <string_view>
 
-#include "core/config.h"
-#include "core/config_file.h"
+#include "core/config/config.h"
+#include "core/config/config_file.h"
 #include "daemon.h"
 
 namespace {

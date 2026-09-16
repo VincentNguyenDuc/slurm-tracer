@@ -96,17 +96,17 @@ integration) looks like:
 1. At startup, walk the discovered cgroup root. For each directory, `stat()` it — the
    inode number *is* the cgroup id — and parse job/step/task out of the path. Populate
    a flat hash map.
-2. From then on, a small BPF program — the **cgroup watcher**
-   (`src/attribution/`) — attaches to the `cgroup:cgroup_mkdir`/`cgroup:cgroup_rmdir`
-   tracepoints and feeds `CgroupResolver::on_created()`/`on_removed()` directly, so new
-   steps land in the map with no rescan and no race against a cache miss: those
-   tracepoints fire synchronously, in-kernel, as part of the mkdir/rmdir syscall
-   itself, before any other probe's event for that cgroup id could reach userspace.
-   This is not a plugin — attribution is mandatory, not a metric a cluster can opt out
-   of, so the daemon builds and attaches it directly next to the resolver itself
-   (`Daemon::start_cgroup_watcher()`), not through the probe registry. Losing it
-   (verifier rejection, kernel too old) does not stop the daemon; the resolver just
-   falls back to whatever its startup scan already saw, which is degraded, not fatal.
+2. From then on, a small BPF program — the **cgroup watcher** — attaches to the
+   `cgroup:cgroup_mkdir`/`cgroup:cgroup_rmdir` tracepoints and feeds
+   `CgroupResolver::on_created()`/`on_removed()` directly, so new steps land in the
+   map with no rescan and no race against a cache miss: those tracepoints fire
+   synchronously, in-kernel, as part of the mkdir/rmdir syscall itself, before any
+   other probe's event for that cgroup id could reach userspace. This is not a
+   plugin — attribution is mandatory, not a metric a cluster can opt out of, so the
+   daemon builds and attaches it directly next to the resolver itself, not through
+   the probe registry. Losing it (verifier rejection, kernel too old) does not stop
+   the daemon; the resolver just falls back to whatever its startup scan already
+   saw, which is degraded, not fatal.
 3. Guard against inode reuse — a recycled cgroup id must not inherit the previous
    job's identity. Entries carry a creation timestamp; a record older than the entry
    is treated as a miss.
@@ -154,8 +154,12 @@ public:
 A probe registers itself by name from its own `.cpp` (`r.probes.add("name", ...)`,
 called from a generated manifest that names every plugin the build contains) — so
 adding a probe is two new files, one `add_st_probe()` line in the probe's own
-`CMakeLists.txt`, and no edits to core. See [registry.h](../src/core/registry.h)
-for why this is a generated manifest rather than a static initialiser.
+`CMakeLists.txt`, and no edits to core. The manifest is generated rather than
+built from a static initialiser because a static initialiser inside a static
+library can get dropped silently by the linker — no compile error, no link
+error, the plugin simply never appears at runtime — whereas naming
+`register_<name>()` as a real undefined symbol in generated code obliges the
+linker to pull the plugin's translation unit in.
 
 **Failure isolation is a requirement, not a nicety.** A probe that fails to load —
 missing tracepoint, verifier rejection, kernel too old — is disabled with a warning
@@ -223,9 +227,8 @@ with nothing inside it is enough to opt in — the reverse of `"enabled": false`
 not its counterpart.
 
 Beyond that one shared key, a member's contents belong entirely to its plugin
-(`core/config.h`'s `ComponentConfig`) — the loader stores whatever it finds and
-never interprets it, so a plugin can add a setting without this file's format
-changing.
+(`ComponentConfig`) — the loader stores whatever it finds and never interprets
+it, so a plugin can add a setting without this file's format changing.
 
 Reload on `SIGHUP` — so probes can attach and detach without restarting the
 daemon and losing the warm attribution cache — is still roadmap, not built.

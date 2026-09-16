@@ -1,6 +1,7 @@
 // The proc_lifecycle wire format -> Record translation.
 //
-// Deliberately separate from probe.cpp and free of libbpf: everything
+// Deliberately separate from the skeleton-owning probe class and free of
+// libbpf: everything
 // interesting about this probe (the hdr.type dispatch, how the kernel packs an
 // exit code, comm truncation) is decided here, and keeping it in a plain
 // function over a plain struct means a test can exercise all of it without a
@@ -8,7 +9,7 @@
 
 #pragma once
 
-#include "core/record.h"
+#include "core/record/record.h"
 #include "probes/proc_lifecycle/proc_lifecycle_events.h"
 
 namespace slurm_tracer {

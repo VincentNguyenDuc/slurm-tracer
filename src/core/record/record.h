@@ -1,4 +1,4 @@
-// The wide record model from docs/DESIGN.md §9.
+// The wide record model.
 //
 // One record type for every probe. A new probe adds new `metric` values and new
 // `attrs` keys, never new fields — that is what keeps the warehouse schema

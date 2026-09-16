@@ -2,22 +2,22 @@
 # the resolver, the record model and the pipeline without loading BPF programs
 # or needing CAP_BPF.
 add_library(st_core STATIC
-    core/attribution.cpp
-    core/clock.cpp
-    core/config.cpp
-    core/config_file.cpp
-    core/pipeline.cpp
-    core/record.cpp
+    core/attribution/attribution.cpp
+    core/utilities/clock.cpp
+    core/config/config.cpp
+    core/config/config_file.cpp
+    core/pipeline/pipeline.cpp
+    core/record/record.cpp
 )
 
 # src/ is the one include root, and nothing below it. Every include is
-# layer-qualified ("core/record.h"), so the layering stays visible at the point
-# of use; adding core/ here would let a bare "record.h" resolve from anywhere
-# and the structure would stop meaning anything.
+# layer-qualified ("core/record/record.h"), so the layering stays visible at
+# the point of use; adding core/ here would let a bare "record.h" resolve from
+# anywhere and the structure would stop meaning anything.
 target_include_directories(st_core PUBLIC ${ST_INCLUDE_ROOT})
 target_link_libraries(st_core PUBLIC Threads::Threads spdlog::spdlog nlohmann_json::nlohmann_json)
 
-add_subdirectory(attribution)
+add_subdirectory(core/attribution)
 add_subdirectory(probes/oom)
 add_subdirectory(probes/proc_lifecycle)
 add_subdirectory(sinks/http)

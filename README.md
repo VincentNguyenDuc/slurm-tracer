@@ -29,7 +29,7 @@ the directory split, is what keeps core testable without CAP_BPF or a kernel.
 ## Adding a probe
 
 1. Create `src/probes/<name>/` holding `<name>.bpf.c`, `<name>_events.h`,
-   and a `probe.cpp` implementing `Probe` (`core/probe.h`). Every event begins
+   and a `probe.cpp` implementing `Probe` (`core/probe/probe.h`). Every event begins
    with `struct st_event_hdr` (see [src/core/events.h](src/core/events.h)),
    which carries the cgroup id used for job attribution — the probe's own event
    struct and `type` values stay in its directory, not shared.
@@ -39,9 +39,10 @@ the directory split, is what keeps core testable without CAP_BPF or a kernel.
 3. Register it from `probe.cpp` with `register_<name>(Registries&)`; the build
    generates the manifest that calls it, so nothing in core ever names a probe.
 
-No other file changes — that's the plugin contract in
-[docs/DESIGN.md](docs/DESIGN.md) §5. `proc_lifecycle` and `oom` are the
-event-driven telemetry probes that exist today; `cgroup_lifecycle` follows the
-same contract but feeds attribution directly instead of emitting records (§4).
-Every probe here streams individual events — there is no in-kernel aggregating
-shape; see §6.
+No other file changes — that's the plugin contract, detailed further in
+[docs/DESIGN.md](docs/DESIGN.md). `proc_lifecycle` and `oom` are the
+event-driven telemetry probes that exist today. The cgroup watcher is not one
+of them: attribution is mandatory, not a metric a cluster can opt out of, so
+it is built and wired directly rather than through this plugin contract.
+Every probe here streams individual events — there is no in-kernel
+aggregating shape.

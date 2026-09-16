@@ -82,7 +82,7 @@ void StdoutJsonSink::run() {
     drained_cv_.notify_all();
 }
 
-// Called by the generated registry_manifest.cpp. Naming it here and calling it
+// Called by the generated plugin manifest. Naming it here and calling it
 // there is what forces this translation unit into the link.
 void register_stdout_json(Registries& r) {
     r.sinks.add("stdout_json", [](const ComponentConfig& config) -> std::unique_ptr<Sink> {

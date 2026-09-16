@@ -275,7 +275,7 @@ void HttpSink::run() {
     drained_cv_.notify_all();
 }
 
-// Called by the generated registry_manifest.cpp.
+// Called by the generated plugin manifest.
 void register_http(Registries& r) {
     r.sinks.add("http", [](const ComponentConfig& config) -> std::unique_ptr<Sink> {
         const std::string endpoint = config.get("endpoint", "");

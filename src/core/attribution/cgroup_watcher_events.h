@@ -1,8 +1,8 @@
 // Wire format private to the cgroup watcher.
 //
-// Shared between cgroup_watcher.bpf.c and the userspace side of the watcher,
-// and by nothing else. The core demuxes on st_event_hdr alone (see
-// core/events.h) and never looks past it.
+// Shared between the kernel and userspace sides of the watcher, and by
+// nothing else. The core demuxes on st_event_hdr alone and never looks past
+// it.
 
 #ifndef SLURM_TRACER_CGROUP_WATCHER_EVENTS_H
 #define SLURM_TRACER_CGROUP_WATCHER_EVENTS_H

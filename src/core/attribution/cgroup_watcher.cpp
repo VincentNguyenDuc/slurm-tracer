@@ -1,13 +1,13 @@
 // This file is the only place the generated skeleton is included, so the
 // embedded BPF object does not leak into anything that merely wants the
-// CgroupWatcher type. See translate.h for the part worth testing.
+// CgroupWatcher type. The translation layer is the part worth testing.
 
-#include "attribution/cgroup_watcher.h"
+#include "core/attribution/cgroup_watcher.h"
 
 #include <spdlog/spdlog.h>
 
-#include "attribution/translate.h"
 #include "cgroup_watcher.skel.h"
+#include "core/attribution/translate.h"
 
 namespace slurm_tracer {
 

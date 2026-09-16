@@ -10,12 +10,12 @@
 #include <memory>
 #include <vector>
 
-#include "attribution/cgroup_watcher.h"
-#include "core/config.h"
-#include "core/pipeline.h"
-#include "core/probe.h"
+#include "core/attribution/cgroup_watcher.h"
+#include "core/config/config.h"
+#include "core/pipeline/pipeline.h"
+#include "core/probe/probe.h"
 #include "core/registry.h"
-#include "core/sink.h"
+#include "core/sink/sink.h"
 #include "event_loop.h"
 
 namespace slurm_tracer {

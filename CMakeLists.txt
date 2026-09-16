@@ -19,7 +19,7 @@ include(BpfProgram)
 include(StPlugin)
 
 # The single include root. Every include below src/ is layer-qualified against
-# this: "core/record.h", "probes/<name>/...".
+# this: "core/record/record.h", "probes/<name>/...".
 set(ST_INCLUDE_ROOT "${CMAKE_SOURCE_DIR}/src")
 
 # libbpf comes from the distro (libbpf-dev): it must match the bpftool used for

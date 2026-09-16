@@ -1,6 +1,6 @@
-#include "core/attribution.h"
+#include "core/attribution/attribution.h"
 
-#include "core/clock.h"
+#include "core/utilities/clock.h"
 
 #include <dirent.h>
 #include <glob.h>

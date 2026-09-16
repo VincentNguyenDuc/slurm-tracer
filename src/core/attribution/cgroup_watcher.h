@@ -1,5 +1,5 @@
 // Feeds CgroupResolver from cgroup_mkdir/rmdir events instead of a filesystem
-// poll. See core/attribution.h and cgroup_watcher.bpf.c.
+// poll.
 //
 // Not a Probe the registry discovers or a config can disable: attribution is
 // mandatory, not a pluggable metric, so the daemon builds and attaches this
@@ -12,9 +12,9 @@
 #include <cstddef>
 #include <string_view>
 
-#include "core/attribution.h"
-#include "core/bpf_probe.h"
-#include "core/probe.h"
+#include "core/attribution/attribution.h"
+#include "core/probe/bpf_probe.h"
+#include "core/probe/probe.h"
 
 struct cgroup_watcher;
 

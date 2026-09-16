@@ -1,4 +1,4 @@
-#include "core/config.h"
+#include "core/config/config.h"
 
 #include <cctype>
 #include <cstdlib>

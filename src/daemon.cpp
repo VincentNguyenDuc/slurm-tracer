@@ -6,7 +6,7 @@
 #include <chrono>
 #include <utility>
 
-#include "core/attribution.h"
+#include "core/attribution/attribution.h"
 
 namespace slurm_tracer {
 namespace {
@@ -64,9 +64,9 @@ void Daemon::start_probes() {
             continue;
         }
 
-        // Failure isolation, per DESIGN §5. A probe that cannot load — missing
-        // tracepoint, verifier rejection, kernel too old — is disabled and the
-        // daemon keeps running with the rest. Clusters are heterogeneous; a node
+        // Failure isolation: a probe that cannot load — missing tracepoint,
+        // verifier rejection, kernel too old — is disabled and the daemon
+        // keeps running with the rest. Clusters are heterogeneous; a node
         // with an older kernel should lose one probe, not all observability.
         if (!probe->open(config) || !probe->load() || !probe->attach()) {
             spdlog::warn("probe {}: disabled", name);
@@ -114,8 +114,7 @@ bool Daemon::start() {
     } else {
         // Fatal, not degraded: run() below exits as soon as it sees resolver_
         // still null. The deployment is responsible for not starting this
-        // daemon before slurmd has created the cgroup scope -- see
-        // entrypoint-worker.sh's wait_for_cgroup_root.
+        // daemon before slurmd has created the cgroup scope.
         spdlog::error("attribution: no Slurm cgroup root found; refusing to start");
     }
 

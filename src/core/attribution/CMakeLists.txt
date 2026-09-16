@@ -1,7 +1,7 @@
 # The cgroup watcher: attribution's own event feed, not a plugin. Every other
 # probe's records depend on it, so it is built and linked unconditionally --
 # it is not named in ST_PLUGINS and cannot be disabled by config the way an
-# actual probe can. See core/attribution.h and cgroup_watcher.h.
+# actual probe can. See attribution.h and cgroup_watcher.h.
 add_library(st_attribution STATIC
     cgroup_watcher.cpp
     translate.cpp

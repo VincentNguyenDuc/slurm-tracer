@@ -8,7 +8,7 @@
 #include <atomic>
 #include <cstdint>
 
-#include "core/sink.h"
+#include "core/sink/sink.h"
 
 namespace slurm_tracer {
 

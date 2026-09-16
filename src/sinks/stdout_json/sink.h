@@ -7,7 +7,7 @@
 #include <mutex>
 #include <thread>
 
-#include "core/sink.h"
+#include "core/sink/sink.h"
 
 namespace slurm_tracer {
 

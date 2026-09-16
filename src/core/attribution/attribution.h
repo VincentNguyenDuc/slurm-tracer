@@ -1,4 +1,4 @@
-// cgroup id -> Slurm job/step/task, per docs/DESIGN.md §4.
+// cgroup id -> Slurm job/step/task.
 //
 // Probes stamp bpf_get_current_cgroup_id() on every event. That id is the inode
 // number of the cgroup directory, so userspace can resolve it by walking the
@@ -48,8 +48,7 @@ public:
     // One-time bootstrap: populates the map from the tree as it stands at
     // startup. Returns false only if the root cannot be read at all. Anything
     // created afterwards arrives through on_created()/on_removed() instead —
-    // see the cgroup watcher (attribution/cgroup_watcher.h), which is the
-    // only caller.
+    // see the cgroup watcher, which is the only caller.
     bool start();
 
     // Resolves a cgroup id against the current map -- a plain lookup. Misses

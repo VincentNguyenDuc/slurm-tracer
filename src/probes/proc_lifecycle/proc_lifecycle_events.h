@@ -1,8 +1,7 @@
 // Wire format private to the proc_lifecycle probe.
 //
-// Shared between proc_lifecycle.bpf.c and the userspace side of this probe, and
-// by nothing else. The core demuxes on st_event_hdr alone (see core/events.h)
-// and never looks past it.
+// Shared between the kernel and userspace sides of this probe, and by nothing
+// else. The core demuxes on st_event_hdr alone and never looks past it.
 
 #ifndef SLURM_TRACER_PROC_LIFECYCLE_EVENTS_H
 #define SLURM_TRACER_PROC_LIFECYCLE_EVENTS_H

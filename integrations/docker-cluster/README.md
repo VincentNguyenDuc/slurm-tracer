@@ -4,7 +4,7 @@ Brings up a two-node Slurm cluster in docker compose, runs `slurm-tracer` as a
 daemon on each worker, submits a job that spans both nodes, and checks that
 the exec/exit events it captured are attributed to that job's id, step and
 task. This is the same attribution path described in
-[docs/DESIGN.md §4](../../docs/DESIGN.md), exercised against a real `slurmd`
+[docs/DESIGN.md](../../docs/DESIGN.md), exercised against a real `slurmd`
 instead of a synthetic cgroup tree.
 
 ## Running it
@@ -49,10 +49,10 @@ Slurm, munge) lives in the image.
    <path>, N cgroups known at startup`) -- nodes going `idle` says nothing
    about whether slurm-tracer has attached yet, and a job submitted in that
    gap comes back completely unattributed. A few seconds' settle time after
-   that message is also given before submitting anything, so the
-   `cgroup_lifecycle` probe (`src/probes/cgroup_lifecycle`) finishes attaching
-   -- from then on it catches every job's cgroup directories itself, via the
-   kernel's own `cgroup_mkdir` tracepoint, with no further polling.
+   that message is also given before submitting anything, so the cgroup
+   watcher finishes attaching -- from then on it catches every job's cgroup
+   directories itself, via the kernel's own `cgroup_mkdir` tracepoint, with no
+   further polling.
 5. Runs every scenario under `scenarios/`, in order:
    - `proc_lifecycle.sh` submits `srun --nodes=2 --ntasks-per-node=1 ...` and
      reads back the job id it printed.
@@ -89,8 +89,8 @@ docker-compose.yml         ctld (controller) + collector + c1, c2 (workers) +
 conf/slurm.conf            Minimal cluster config; node names match the compose
                            services.
 conf/cgroup.conf           cgroup/v2, IgnoreSystemd=yes.
-conf/tracer.json           slurm-tracer's own config (docs/DESIGN.md §7):
-                           stdout_json + http, http pointed at collector.
+conf/tracer.json           slurm-tracer's own config: stdout_json + http,
+                           http pointed at collector.
 scripts/build.sh           Builds slurm-tracer into build/docker.
 scripts/common.sh          setup_munge, setup_cgroup_delegation, wait_for_binary.
 scripts/collector.py       Stand-in http sink ingest endpoint; appends every

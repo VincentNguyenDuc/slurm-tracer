@@ -1,4 +1,4 @@
-// Probe contract, per docs/DESIGN.md §5.
+// Probe contract.
 //
 // A probe contributes one .bpf.c, one class implementing this interface, and an
 // event struct beginning with st_event_hdr. It owns its own ring buffer, so the
@@ -15,8 +15,8 @@
 #include <cstddef>
 #include <string_view>
 
-#include "core/config.h"
-#include "core/record.h"
+#include "core/config/config.h"
+#include "core/record/record.h"
 
 namespace slurm_tracer {
 
@@ -45,8 +45,8 @@ public:
     virtual void detach() = 0;
 
     // Every probe exposes a ring buffer for the event loop to poll and
-    // translate each event in on_event(). See DESIGN §6: this tree only
-    // supports the event-driven shape, not in-kernel aggregation.
+    // translate each event in on_event(). This tree only supports the
+    // event-driven shape, not in-kernel aggregation.
     virtual int ring_fd() const { return -1; }
     virtual void on_event(const void* data, size_t len, RecordEmitter&) = 0;
 };

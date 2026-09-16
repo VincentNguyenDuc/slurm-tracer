@@ -6,7 +6,7 @@
 
 #include <cerrno>
 
-#include "core/probe.h"
+#include "core/probe/probe.h"
 
 namespace slurm_tracer {
 

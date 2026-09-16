@@ -1,9 +1,9 @@
 // Ring buffer polling for event-driven probes.
 //
-// One ring buffer per probe, per docs/DESIGN.md §5: it costs a few MiB, and in
-// exchange a chatty probe cannot starve a quiet one and each buffer is sized to
-// its own event rate. libbpf multiplexes them onto a single epoll set, so this
-// is still one poll call.
+// One ring buffer per probe: it costs a few MiB, and in exchange a chatty
+// probe cannot starve a quiet one and each buffer is sized to its own event
+// rate. libbpf multiplexes them onto a single epoll set, so this is still one
+// poll call.
 
 #pragma once
 

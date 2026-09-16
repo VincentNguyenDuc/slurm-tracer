@@ -1,10 +1,9 @@
-// Configuration, per docs/DESIGN.md §7.
+// Configuration.
 //
 // Deliberately a plain struct with string-keyed per-component sections rather
-// than anything that knows about the config file format (core/config_file.h).
-// A plugin receives a ComponentConfig and nothing else, so the file format
-// stays an implementation detail of the loader and adding one never touches
-// the plugin contract.
+// than anything that knows about the config file format. A plugin receives a
+// ComponentConfig and nothing else, so the file format stays an implementation
+// detail of the loader and adding one never touches the plugin contract.
 
 #pragma once
 

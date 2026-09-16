@@ -1,9 +1,8 @@
 // Plugin registries.
 //
 // Probes and sinks are constructed by name, so the daemon never mentions a
-// concrete plugin. Registration happens through registry_manifest.cpp, which
-// CMake generates from the set of probes/sinks in the build — see
-// cmake/StPlugin.cmake.
+// concrete plugin. Registration happens through a manifest CMake generates
+// from the set of probes/sinks in the build.
 //
 // Why generated rather than a REGISTER_PROBE static initialiser: the manifest
 // calls register_<name>() as a real undefined symbol, so the linker is obliged
@@ -19,7 +18,7 @@
 #include <string>
 #include <vector>
 
-#include "core/config.h"
+#include "core/config/config.h"
 
 namespace slurm_tracer {
 
@@ -62,7 +61,7 @@ struct Registries {
     Registry<Sink> sinks;
 };
 
-// Defined by the generated registry_manifest.cpp, not by any hand-written file.
+// Defined by the generated manifest, not by any hand-written file.
 void register_all(Registries&);
 
 } // namespace slurm_tracer

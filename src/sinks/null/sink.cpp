@@ -6,7 +6,7 @@
 
 namespace slurm_tracer {
 
-// Called by the generated registry_manifest.cpp.
+// Called by the generated plugin manifest.
 void register_null(Registries& r) {
     r.sinks.add("null", [](const ComponentConfig&) -> std::unique_ptr<Sink> {
         return std::make_unique<NullSink>();

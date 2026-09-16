@@ -1,4 +1,4 @@
-#include "core/config_file.h"
+#include "core/config/config_file.h"
 
 #include <nlohmann/json.hpp>
 
@@ -9,9 +9,9 @@ namespace {
 
 using Json = nlohmann::json;
 
-// Routes a value through ComponentConfig's own parsing (core/config.cpp)
-// rather than re-implementing bool/duration parsing here -- there is exactly
-// one definition of what "10s" or true means, and it is that one.
+// Routes a value through ComponentConfig's own parsing rather than
+// re-implementing bool/duration parsing here -- there is exactly one
+// definition of what "10s" or true means, and it is that one.
 ComponentConfig one_shot(const std::string& value) {
     ComponentConfig c;
     c.set("v", value);
@@ -19,8 +19,8 @@ ComponentConfig one_shot(const std::string& value) {
 }
 
 // Converts whatever JSON type a leaf value actually is back to a string --
-// ComponentConfig (core/config.h) is deliberately string-keyed and
-// string-valued no matter what the file format's native types are.
+// ComponentConfig is deliberately string-keyed and string-valued no matter
+// what the file format's native types are.
 std::string stringify(const Json& v) {
     if (v.is_string())
         return v.get<std::string>();
@@ -34,10 +34,10 @@ std::string stringify(const Json& v) {
 }
 
 // Removes any probes/sinks entry explicitly marked `"enabled": false`.
-// Presence in the map means enabled (core/config.h), so a section that
-// exists in the file but disables itself must not leave an entry behind --
-// the alternative, defaulting a missing `enabled` key to true, is exactly
-// why every *other* section this loader creates is left in the map.
+// Presence in the map means enabled, so a section that exists in the file but
+// disables itself must not leave an entry behind -- the alternative,
+// defaulting a missing `enabled` key to true, is exactly why every *other*
+// section this loader creates is left in the map.
 void drop_disabled(std::map<std::string, ComponentConfig>& components) {
     for (auto it = components.begin(); it != components.end();) {
         if (it->second.get_bool("enabled", true))
@@ -49,7 +49,7 @@ void drop_disabled(std::map<std::string, ComponentConfig>& components) {
 
 // Walks a "probes"/"sinks" object into `components`, one ComponentConfig per
 // member -- present even for `{}`, which is what turns a component on with no
-// settings (core/config.h: presence means enabled).
+// settings (presence means enabled).
 bool load_components(
     const Json& section,
     const std::string& section_name,

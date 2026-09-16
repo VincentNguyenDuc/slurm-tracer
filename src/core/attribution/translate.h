@@ -1,15 +1,16 @@
 // The cgroup watcher's wire format -> CgroupLifecycleUpdate translation.
 //
-// Deliberately separate from cgroup_watcher.cpp and free of libbpf, same split
-// proc_lifecycle uses: a plain function over a plain struct means a test can
-// exercise it with no kernel, no skeleton, and no privileges.
+// Deliberately separate from the skeleton-owning watcher class and free of
+// libbpf, same split proc_lifecycle uses: a plain function over a plain
+// struct means a test can exercise it with no kernel, no skeleton, and no
+// privileges.
 
 #pragma once
 
 #include <cstdint>
 #include <string>
 
-#include "attribution/cgroup_watcher_events.h"
+#include "core/attribution/cgroup_watcher_events.h"
 
 namespace slurm_tracer {
 

@@ -14,9 +14,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "core/probe.h"
-#include "core/record.h"
-#include "core/sink.h"
+#include "core/probe/probe.h"
+#include "core/record/record.h"
+#include "core/sink/sink.h"
 
 namespace slurm_tracer {
 
