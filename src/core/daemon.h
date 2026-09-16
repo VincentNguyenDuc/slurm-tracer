@@ -12,11 +12,11 @@
 
 #include "core/attribution/cgroup_watcher.h"
 #include "core/config/config.h"
+#include "core/event_loop.h"
 #include "core/pipeline/pipeline.h"
 #include "core/probe/probe.h"
 #include "core/registry.h"
 #include "core/sink/sink.h"
-#include "event_loop.h"
 
 namespace slurm_tracer {
 

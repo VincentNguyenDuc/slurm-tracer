@@ -20,7 +20,7 @@
 
 #include "core/config/config.h"
 #include "core/config/config_file.h"
-#include "daemon.h"
+#include "core/daemon.h"
 
 namespace {
 

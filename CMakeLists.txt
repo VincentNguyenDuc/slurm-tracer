@@ -35,7 +35,7 @@ find_package(Threads REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
-add_subdirectory(src)
+add_subdirectory(src/core)
 
 option(SLURM_TRACER_BUILD_TESTS "Build the test suite" ON)
 if(SLURM_TRACER_BUILD_TESTS)

@@ -2,27 +2,27 @@
 # the resolver, the record model and the pipeline without loading BPF programs
 # or needing CAP_BPF.
 add_library(st_core STATIC
-    core/attribution/attribution.cpp
-    core/utilities/clock.cpp
-    core/config/config.cpp
-    core/config/config_file.cpp
-    core/pipeline/pipeline.cpp
-    core/record/record.cpp
+    attribution/attribution.cpp
+    utilities/clock.cpp
+    config/config.cpp
+    config/config_file.cpp
+    pipeline/pipeline.cpp
+    record/record.cpp
 )
 
 # src/ is the one include root, and nothing below it. Every include is
-# layer-qualified ("core/record/record.h"), so the layering stays visible at
-# the point of use; adding core/ here would let a bare "record.h" resolve from
+# layer-qualified ("record/record.h"), so the layering stays visible at
+# the point of use; adding  here would let a bare "record.h" resolve from
 # anywhere and the structure would stop meaning anything.
 target_include_directories(st_core PUBLIC ${ST_INCLUDE_ROOT})
 target_link_libraries(st_core PUBLIC Threads::Threads spdlog::spdlog nlohmann_json::nlohmann_json)
 
-add_subdirectory(core/attribution)
-add_subdirectory(probes/oom)
-add_subdirectory(probes/proc_lifecycle)
-add_subdirectory(sinks/http)
-add_subdirectory(sinks/null)
-add_subdirectory(sinks/stdout_json)
+add_subdirectory(attribution)
+add_subdirectory(../probes/oom probes/oom)
+add_subdirectory(../probes/proc_lifecycle probes/proc_lifecycle)
+add_subdirectory(../sinks/http sinks/http)
+add_subdirectory(../sinks/null sinks/null)
+add_subdirectory(../sinks/stdout_json sinks/stdout_json)
 st_generate_plugin_manifest(ST_MANIFEST_SOURCE ST_PLUGIN_TARGETS)
 
 add_executable(slurm-tracer
