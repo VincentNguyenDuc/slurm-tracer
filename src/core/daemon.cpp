@@ -57,9 +57,6 @@ bool Daemon::start() {
 
     if (auto root = discover_cgroup_root(config_.cgroup_root)) {
         resolver_ = std::make_unique<CgroupResolver>(*root);
-        spdlog::info(
-            "attribution: cgroup root {}, {} cgroups known at startup", *root, resolver_->size()
-        );
     } else {
         spdlog::error("attribution: no Slurm cgroup root found; refusing to start");
         return false;
@@ -258,9 +255,25 @@ void Daemon::remove_probe(const std::string& name) {
     });
     if (it == probes_.end())
         return;
-    loop_.remove(**it);
+
+    std::vector<Probe*> also_dropped = loop_.remove(**it);
     (*it)->detach();
     probes_.erase(it);
+
+    // loop_.remove() can knock out an unrelated probe's ring buffer binding
+    // as a side effect of rebuilding the shared one (see EventLoop::remove).
+    // Those are just as gone as the one actually being removed here, so they
+    // get the same detach-and-forget treatment rather than sitting in
+    // probes_ looking alive while producing nothing.
+    for (Probe* dead : also_dropped) {
+        const auto dead_it = std::find_if(probes_.begin(), probes_.end(), [&](const auto& p) {
+            return p.get() == dead;
+        });
+        if (dead_it == probes_.end())
+            continue;
+        (*dead_it)->detach();
+        probes_.erase(dead_it);
+    }
 }
 
 } // namespace slurm_tracer

@@ -12,7 +12,7 @@ JOB_OUTPUT="$(docker compose exec -T ctld srun --nodes=2 --ntasks-per-node=1 --p
     bash -c 'echo "JOBID=$SLURM_JOB_ID NODE=$SLURMD_NODENAME"; sleep 1; /bin/true')"
 echo "$JOB_OUTPUT"
 
-JOB_ID="$(printf '%s\n' "$JOB_OUTPUT" | grep -oE 'JOBID=[0-9]+' | head -1 | cut -d= -f2)"
+JOB_ID="$(printf '%s\n' "$JOB_OUTPUT" | grep -oE 'JOBID=[0-9]+' | head -1 | cut -d= -f2 || true)"
 if [ -z "${JOB_ID:-}" ]; then
     log "could not determine job id from srun output"
     exit 1

@@ -37,7 +37,12 @@ public:
     // Returns false on a fatal poll error; EINTR is not one.
     bool poll(std::chrono::milliseconds timeout);
 
-    void remove(Probe& probe);
+    // Removes a probe's ring buffer and re-arms every other one, since
+    // libbpf multiplexes them all onto one ring_buffer that has to be rebuilt
+    // wholesale. Returns any *other* probes that failed to re-arm during that
+    // rebuild and were dropped as a result -- the caller must detach and
+    // forget those too, not just the probe it asked to remove.
+    std::vector<Probe*> remove(Probe& probe);
 
 private:
     // One per probe, heap-allocated because libbpf keeps the pointer.

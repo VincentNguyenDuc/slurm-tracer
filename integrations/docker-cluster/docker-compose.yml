@@ -24,8 +24,8 @@ services:
     entrypoint: ["/opt/st/scripts/entrypoint-controller.sh"]
 
   # Stand-in ingest endpoint for the http sink both workers are configured
-  # (conf/tracer.json) to stream to, alongside stdout_json -- see
-  # scripts/collector.py.
+  # (conf/tracer_c1.json, conf/tracer_c2.json) to stream to, alongside
+  # stdout_json -- see scripts/collector.py.
   collector:
     build: .
     image: slurm-tracer-test:latest

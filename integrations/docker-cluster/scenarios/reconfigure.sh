@@ -62,7 +62,7 @@ JOB_OUTPUT="$(docker compose exec -T ctld srun --nodes=1 --ntasks=1 --nodelist=c
     2>&1 || true)"
 echo "$JOB_OUTPUT"
 
-JOB_ID="$(printf '%s\n' "$JOB_OUTPUT" | grep -oE 'JOBID=[0-9]+' | head -1 | cut -d= -f2)"
+JOB_ID="$(printf '%s\n' "$JOB_OUTPUT" | grep -oE 'JOBID=[0-9]+' | head -1 | cut -d= -f2 || true)"
 if [ -z "${JOB_ID:-}" ]; then
     log "could not determine job id from srun output"
     exit 1

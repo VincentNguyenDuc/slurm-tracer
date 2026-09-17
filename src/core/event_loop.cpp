@@ -55,13 +55,15 @@ bool EventLoop::poll(std::chrono::milliseconds timeout) {
     return true;
 }
 
-void EventLoop::remove(Probe& probe) {
+std::vector<Probe*> EventLoop::remove(Probe& probe) {
+    std::vector<Probe*> dropped;
+
     const auto it =
         std::find_if(bindings_.begin(), bindings_.end(), [&](const std::unique_ptr<Binding>& b) {
             return b->probe == &probe;
         });
     if (it == bindings_.end())
-        return;
+        return dropped;
     bindings_.erase(it); // Binding is heap-allocated; erase doesn't move it or
     // any other Binding's address, which is what libbpf's
     // ctx pointers below are keyed on.
@@ -71,24 +73,42 @@ void EventLoop::remove(Probe& probe) {
         rb_ = nullptr;
     }
     if (bindings_.empty())
-        return; // matches the existing empty() contract
+        return dropped; // matches the existing empty() contract
 
     ring_buffer_sample_fn callback = [](void* raw, void* data, size_t size) -> int {
         auto& b = *static_cast<Binding*>(raw);
         b.probe->on_event(data, size, *b.out);
         return 0;
     };
+
+    // A binding that fails to re-arm here is not just left broken: it would
+    // stay listed as running in bindings_/the caller's own probe list while
+    // never producing another event, a zombie indistinguishable from a
+    // healthy probe. It is dropped from bindings_ (its Probe* reported back
+    // instead, via `dropped`) so the caller can detach and forget it too --
+    // the same fate as a probe that fails to attach at startup.
+    std::vector<std::unique_ptr<Binding>> surviving;
+    surviving.reserve(bindings_.size());
     for (auto& binding : bindings_) {
         const int fd = binding->probe->ring_fd(); // re-derived fresh each call
         const bool ok =
             rb_ == nullptr
                 ? (rb_ = ring_buffer__new(fd, callback, binding.get(), nullptr)) != nullptr
                 : ring_buffer__add(rb_, fd, callback, binding.get()) == 0;
-        if (!ok)
+        if (ok) {
+            surviving.push_back(std::move(binding));
+        } else {
             spdlog::error(
-                "probe {}: failed to re-arm while removing {}", binding->probe->name(), probe.name()
+                "probe {}: failed to re-arm while removing {}; dropping it too",
+                binding->probe->name(),
+                probe.name()
             );
+            dropped.push_back(binding->probe);
+        }
     }
+    bindings_ = std::move(surviving);
+
+    return dropped;
 }
 
 } // namespace slurm_tracer

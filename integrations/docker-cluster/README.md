@@ -36,8 +36,9 @@ Slurm, munge) lives in the image.
    for the http sink, `scripts/collector.py`), and two workers (`c1`, `c2`).
    Each worker runs `slurmd` and `slurm-tracer` side by side
    (`scripts/entrypoint-worker.sh`). `slurm-tracer` is given
-   `--config /etc/slurm-tracer/config.json` (`conf/tracer.json`, identical on
-   both workers), which turns on `stdout_json` (landing in
+   `--config /etc/slurm-tracer/config.json` (`conf/tracer_c1.json`/
+   `conf/tracer_c2.json`, identical apart from each one's own `node` field),
+   which turns on `stdout_json` (landing in
    `live/<node>/<node>.jsonl` on the host) and `http` (shipped to `collector`
    over the compose network, landing in `live/collector/received.jsonl`) at
    once -- this is as much a test of the config loader and of both sinks
@@ -95,8 +96,9 @@ docker-compose.yml         ctld (controller) + collector + c1, c2 (workers) +
 conf/slurm.conf            Minimal cluster config; node names match the compose
                            services.
 conf/cgroup.conf           cgroup/v2, IgnoreSystemd=yes.
-conf/tracer.json           slurm-tracer's own config: stdout_json + http,
-                           http pointed at collector.
+conf/tracer_c1.json,       slurm-tracer's own config, one per worker (same
+conf/tracer_c2.json        apart from "node"): stdout_json + http, http
+                           pointed at collector.
 scripts/build.sh           Builds slurm-tracer into build/docker.
 scripts/common.sh          setup_munge, setup_cgroup_delegation, wait_for_binary.
 scripts/collector.py       Stand-in http sink ingest endpoint; appends every

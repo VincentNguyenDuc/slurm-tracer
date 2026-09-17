@@ -43,8 +43,9 @@ wait_for_cgroup_root
 # job, same as it would on a real compute node: it watches the cgroup tree and
 # attributes whatever jobs land on it.
 #
-# conf/tracer.json (identical on both workers) picks the probes and sinks,
-# including the http sink shipping to the collector service
+# conf/tracer_c1.json / conf/tracer_c2.json (identical apart from "node")
+# pick the probes and sinks, including the http sink shipping to the
+# collector service
 #
 # Started after slurmd so slurmd is always up first.
 /workspace/build/docker/slurm-tracer \
