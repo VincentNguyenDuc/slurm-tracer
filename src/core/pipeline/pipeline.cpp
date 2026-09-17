@@ -81,13 +81,8 @@ void Pipeline::ship() {
     batch.swap(batch_);
     batch_.reserve(opt_.batch_size);
 
-    // Every sink gets its own copy; a sink may outlive this call and must not
-    // alias another sink's records. The last one takes the original by move.
     for (size_t i = 0; i < sinks_.size(); ++i) {
-        if (i + 1 == sinks_.size())
-            sinks_[i]->write(std::move(batch));
-        else
-            sinks_[i]->write(batch);
+        sinks_[i]->write(batch);
     }
 }
 

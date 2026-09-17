@@ -89,4 +89,28 @@ std::chrono::milliseconds ComponentConfig::get_duration(
     return parse_duration_ms(it->second, parsed) ? parsed : fallback;
 }
 
+std::optional<ConfigDiff> diff_for_reload(const Config& current, const Config& next) {
+    if (next.cluster != current.cluster || next.node != current.node ||
+        next.cgroup_root != current.cgroup_root || next.batch_size != current.batch_size ||
+        next.flush_interval != current.flush_interval || next.verbose != current.verbose)
+        return std::nullopt;
+
+    ConfigDiff diff;
+    for (const auto& [name, unused] : current.probes)
+        if (!next.probes.count(name))
+            diff.removed_probes.push_back(name);
+    for (const auto& [name, unused] : next.probes)
+        if (!current.probes.count(name))
+            diff.added_probes.push_back(name);
+
+    for (const auto& [name, unused] : current.sinks)
+        if (!next.sinks.count(name))
+            diff.removed_sinks.push_back(name);
+    for (const auto& [name, unused] : next.sinks)
+        if (!current.sinks.count(name))
+            diff.added_sinks.push_back(name);
+
+    return diff;
+}
+
 } // namespace slurm_tracer

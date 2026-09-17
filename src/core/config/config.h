@@ -10,7 +10,9 @@
 #include <chrono>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace slurm_tracer {
 
@@ -54,5 +56,31 @@ struct Config {
     std::map<std::string, ComponentConfig> probes;
     std::map<std::string, ComponentConfig> sinks;
 };
+
+// Probe/sink names to add or remove to take a running daemon from `current`
+// to `next`. A name present in both is left alone, even if its
+// ComponentConfig changed -- see diff_for_reload.
+struct ConfigDiff {
+    std::vector<std::string> added_probes;
+    std::vector<std::string> removed_probes;
+    std::vector<std::string> added_sinks;
+    std::vector<std::string> removed_sinks;
+};
+
+// What a running daemon would have to do to move from `current` to `next`
+// without a restart, or nullopt if `next` cannot be applied live at all.
+//
+// Only probes and sinks have a live-update path, by name: whatever dropped
+// out is removed, whatever is new is added. A name present in both is left
+// running as-is -- picking up changed settings for a running component would
+// need every plugin to support reconfiguring in place, which none do.
+//
+// Everything else -- node, cluster, cgroup_root, batch_size, flush_interval,
+// verbose -- has no live-update path at all (node/cluster are stamped on
+// every record by the already-running pipeline, batch_size/flush_interval
+// are baked into it at construction, cgroup_root only matters at the
+// one-time startup scan), so a `next` that changes any of those is rejected
+// outright rather than partially applied.
+std::optional<ConfigDiff> diff_for_reload(const Config& current, const Config& next);
 
 } // namespace slurm_tracer

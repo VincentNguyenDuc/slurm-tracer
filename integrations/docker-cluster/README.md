@@ -61,6 +61,12 @@ Slurm, munge) lives in the image.
      `oom` probe, and depends on `conf/cgroup.conf`'s `ConstrainRAMSpace`/
      `ConstrainSwapSpace=yes` actually turning `--mem` into that job's cgroup
      `memory.max`.
+   - `reconfigure.sh` rewrites c1's config to drop the `proc_lifecycle` probe
+     and the `http` sink, sends `SIGHUP`, confirms the daemon logged a reload,
+     then submits an OOM job to show the surviving `oom` probe/`stdout_json`
+     sink still work. Restores c1's original config (and reloads it back)
+     when it's done, so it must run last -- it relies on the alphabetical
+     `scenarios/*.sh` ordering to sort after the other two.
 
    Each scenario ends by calling `record_scenario` (`scenarios/lib.sh`),
    which snapshots its job id, the raw command output, and the *current*
@@ -101,7 +107,10 @@ scenarios/lib.sh           record_scenario: snapshots a scenario's job metadata
                            and current live/ node/collector output into
                            $OUT_DIR/scenarios/<name>/. Sourced, not run.
 scenarios/*.sh             One workload each; drives the cluster, then calls
-                           record_scenario. No pass/fail logic.
+                           record_scenario. No pass/fail logic beyond
+                           sanity-checking that the scenario's own drive step
+                           worked (e.g. reconfigure.sh's reload actually
+                           happened).
 secrets/, live/, out/,     Generated; gitignored. live/<node> and
 build/                     live/collector are the raw, cumulative bind-mount
                            targets for the whole run (docker-compose.yml);

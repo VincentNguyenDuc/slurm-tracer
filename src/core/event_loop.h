@@ -37,6 +37,8 @@ public:
     // Returns false on a fatal poll error; EINTR is not one.
     bool poll(std::chrono::milliseconds timeout);
 
+    void remove(Probe& probe);
+
 private:
     // One per probe, heap-allocated because libbpf keeps the pointer.
     struct Binding {

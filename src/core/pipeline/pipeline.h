@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "core/probe/probe.h"
@@ -45,6 +46,11 @@ public:
 
     // Ships whatever is pending and drains every sink. For shutdown.
     void flush();
+
+    // Replaces the sink list used by future ship()s. The daemon calls this
+    // after adding or removing a sink; safe because the daemon and pipeline
+    // run on the same thread, so this never races a ship() in progress.
+    void set_sinks(std::vector<Sink*> sinks) { sinks_ = std::move(sinks); }
 
     struct Stats {
         uint64_t records = 0;

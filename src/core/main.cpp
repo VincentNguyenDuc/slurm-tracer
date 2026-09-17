@@ -57,7 +57,7 @@ void usage(const char* argv0) {
               << "  --config <path>       load a JSON config file first; flags below override it\n";
 }
 
-bool parse_args(int argc, char** argv, slurm_tracer::Config& config) {
+bool parse_args(int argc, char** argv, slurm_tracer::Config& config, std::string& config_path) {
     int i = 1;
     while (i < argc) {
         const std::string arg = argv[i];
@@ -67,8 +67,9 @@ bool parse_args(int argc, char** argv, slurm_tracer::Config& config) {
                 spdlog::error("--config: missing argument");
                 return false;
             }
+            config_path = argv[++i];
             std::string error;
-            auto loaded = slurm_tracer::load_config_file(argv[++i], error);
+            auto loaded = slurm_tracer::load_config_file(config_path, error);
             if (!loaded) {
                 spdlog::error("--config: {}", error);
                 return false;
@@ -94,8 +95,9 @@ int main(int argc, char** argv) {
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
 
     slurm_tracer::Config config;
+    std::string config_path;
 
-    if (!parse_args(argc, argv, config))
+    if (!parse_args(argc, argv, config, config_path))
         return EXIT_FAILURE;
 
     spdlog::set_level(config.verbose ? spdlog::level::debug : spdlog::level::info);
@@ -105,7 +107,7 @@ int main(int argc, char** argv) {
     std::signal(SIGTERM, on_stop_signal);
     std::signal(SIGHUP, on_reload_signal);
 
-    slurm_tracer::Daemon daemon(std::move(config));
+    slurm_tracer::Daemon daemon(std::move(config), std::move(config_path));
     if (!daemon.start())
         return EXIT_FAILURE;
     return daemon.run(g_stop, g_reload);

@@ -3,10 +3,12 @@
 #include <spdlog/fmt/fmt.h>
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <chrono>
 #include <utility>
 
 #include "core/attribution/attribution.h"
+#include "core/config/config_file.h"
 
 namespace slurm_tracer {
 namespace {
@@ -15,8 +17,9 @@ constexpr auto kPollTimeout = std::chrono::milliseconds(100);
 
 } // namespace
 
-Daemon::Daemon(Config config)
-    : config_(std::move(config)) {
+Daemon::Daemon(Config config, std::string config_path)
+    : config_(std::move(config))
+    , config_path_(std::move(config_path)) {
     register_all(registries_);
 }
 
@@ -148,7 +151,52 @@ void Daemon::report_shutdown() const {
     spdlog::info(msg);
 }
 
-void Daemon::reload_config() {}
+void Daemon::reload_config() {
+    if (config_path_.empty()) {
+        spdlog::warn("reload: no --config file was loaded at startup; ignoring SIGHUP");
+        return;
+    }
+
+    std::string error;
+    auto loaded = load_config_file(config_path_, error);
+    if (!loaded) {
+        spdlog::error("reload: {}; keeping current configuration", error);
+        return;
+    }
+    Config next = std::move(*loaded);
+
+    // Decides whether this file can be applied live at all,
+    // and which probes/sinks would need to change if so;
+    // applying that diff with this daemon's own registries
+    // and component lifecycle is all that's left to do here.
+    auto diff = diff_for_reload(config_, next);
+    if (!diff) {
+        spdlog::error(
+            "reload: {} cannot be applied without a restart; ignoring this reload", config_path_
+        );
+        return;
+    }
+
+    for (const auto& name : diff->removed_sinks)
+        remove_sink(name);
+    for (const auto& name : diff->added_sinks)
+        add_sink(name, next.sinks.at(name));
+
+    for (const auto& name : diff->removed_probes)
+        remove_probe(name);
+    for (const auto& name : diff->added_probes)
+        add_probe(name, next.probes.at(name));
+
+    config_.sinks = std::move(next.sinks);
+    config_.probes = std::move(next.probes);
+
+    if (sinks_.empty())
+        spdlog::warn("reload: no sinks configured; records go nowhere until the next reload");
+    if (probes_.empty())
+        spdlog::warn("reload: no probes running; nothing is being collected");
+
+    spdlog::info("reload: config re-read from {}", config_path_);
+}
 
 void Daemon::add_probe(const std::string& name, const ComponentConfig& config) {
     auto probe = registries_.probes.create(name, config);
@@ -170,7 +218,17 @@ void Daemon::add_probe(const std::string& name, const ComponentConfig& config) {
     return;
 }
 
-void Daemon::remove_sink(const std::string& name) {}
+void Daemon::remove_sink(const std::string& name) {
+    const auto it = std::find_if(sinks_.begin(), sinks_.end(), [&](const auto& s) {
+        return s->name() == name;
+    });
+    if (it == sinks_.end())
+        return;
+    std::unique_ptr<Sink> doomed = std::move(*it);
+    sinks_.erase(it);
+    wire_sinks();
+    doomed->flush();
+}
 
 void Daemon::add_sink(const std::string& name, const ComponentConfig& config) {
     auto sink = registries_.sinks.create(name, config);
@@ -179,10 +237,30 @@ void Daemon::add_sink(const std::string& name, const ComponentConfig& config) {
         return;
     }
     sinks_.push_back(std::move(sink));
+    if (pipeline_)
+        wire_sinks();
 }
 
-void Daemon::wire_sinks() {}
+void Daemon::wire_sinks() {
+    if (!pipeline_)
+        return;
 
-void Daemon::remove_probe(const std::string& name) {}
+    std::vector<Sink*> sink_ptrs;
+    sink_ptrs.reserve(sinks_.size());
+    for (const auto& sink : sinks_)
+        sink_ptrs.push_back(sink.get());
+    pipeline_->set_sinks(std::move(sink_ptrs));
+}
+
+void Daemon::remove_probe(const std::string& name) {
+    const auto it = std::find_if(probes_.begin(), probes_.end(), [&](const auto& p) {
+        return p->name() == name;
+    });
+    if (it == probes_.end())
+        return;
+    loop_.remove(**it);
+    (*it)->detach();
+    probes_.erase(it);
+}
 
 } // namespace slurm_tracer

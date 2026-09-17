@@ -4,6 +4,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <cerrno>
 
 #include "core/probe/probe.h"
@@ -52,6 +53,42 @@ bool EventLoop::poll(std::chrono::milliseconds timeout) {
         return false;
     }
     return true;
+}
+
+void EventLoop::remove(Probe& probe) {
+    const auto it =
+        std::find_if(bindings_.begin(), bindings_.end(), [&](const std::unique_ptr<Binding>& b) {
+            return b->probe == &probe;
+        });
+    if (it == bindings_.end())
+        return;
+    bindings_.erase(it); // Binding is heap-allocated; erase doesn't move it or
+    // any other Binding's address, which is what libbpf's
+    // ctx pointers below are keyed on.
+
+    if (rb_ != nullptr) {
+        ring_buffer__free(rb_);
+        rb_ = nullptr;
+    }
+    if (bindings_.empty())
+        return; // matches the existing empty() contract
+
+    ring_buffer_sample_fn callback = [](void* raw, void* data, size_t size) -> int {
+        auto& b = *static_cast<Binding*>(raw);
+        b.probe->on_event(data, size, *b.out);
+        return 0;
+    };
+    for (auto& binding : bindings_) {
+        const int fd = binding->probe->ring_fd(); // re-derived fresh each call
+        const bool ok =
+            rb_ == nullptr
+                ? (rb_ = ring_buffer__new(fd, callback, binding.get(), nullptr)) != nullptr
+                : ring_buffer__add(rb_, fd, callback, binding.get()) == 0;
+        if (!ok)
+            spdlog::error(
+                "probe {}: failed to re-arm while removing {}", binding->probe->name(), probe.name()
+            );
+    }
 }
 
 } // namespace slurm_tracer

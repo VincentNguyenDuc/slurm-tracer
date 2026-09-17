@@ -8,6 +8,7 @@
 
 #include <csignal>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "core/attribution/cgroup_watcher.h"
@@ -22,7 +23,10 @@ namespace slurm_tracer {
 
 class Daemon {
 public:
-    explicit Daemon(Config config);
+    // config_path is where reload_config() re-reads from on SIGHUP; empty
+    // means the process was configured without --config, so reload is a
+    // no-op.
+    Daemon(Config config, std::string config_path);
     ~Daemon();
 
     Daemon(const Daemon&) = delete;
@@ -48,6 +52,7 @@ private:
     void remove_probe(const std::string& name);
 
     Config config_;
+    std::string config_path_;
     Registries registries_;
 
     std::unique_ptr<CgroupResolver> resolver_;
