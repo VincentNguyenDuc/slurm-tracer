@@ -31,15 +31,10 @@ public:
         std::chrono::milliseconds flush_interval{1000};
     };
 
-    Pipeline(Options opt, std::vector<Sink*> sinks);
+    Pipeline(Options opt, std::vector<Sink*> sinks, CgroupResolver* resolver_);
 
     Pipeline(const Pipeline&) = delete;
     Pipeline& operator=(const Pipeline&) = delete;
-
-    // The resolver can arrive after the pipeline is running: on a compute node
-    // the tracer usually starts at boot, before slurmd has created the cgroup
-    // scope at all. Records emitted before then go out unattributed.
-    void set_resolver(CgroupResolver* resolver) { resolver_ = resolver; }
 
     // RecordEmitter. Enriches, batches, and ships once the batch is full.
     void emit(Record r) override;
@@ -68,7 +63,7 @@ private:
 
     Options opt_;
     std::vector<Sink*> sinks_;
-    CgroupResolver* resolver_ = nullptr;
+    CgroupResolver* resolver_;
 
     std::vector<Record> batch_;
     std::chrono::steady_clock::time_point last_flush_;

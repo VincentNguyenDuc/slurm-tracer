@@ -28,56 +28,7 @@ Two decisions were made while scoping this:
 
 ## Design
 
-### 1. Remove CLI flags (`src/core/main.cpp`)
-
-Delete `parse_args()` and `parse_names()` entirely. The only recognized arguments
-become `--config <path>` and `-h`/`--help`. `--config` stays optional (omitting it
-keeps today's zero-config quick-start: every built-in default, every registered
-probe/sink) — but once running, the *only* way to change anything is to edit that
-file and send `SIGHUP`; there is no longer a CLI override to reconcile against a
-reload.
-
-```cpp
-int main(int argc, char** argv) {
-    ...
-    std::string config_path;
-    for (int i = 1; i < argc; ++i) {
-        const std::string arg = argv[i];
-        if (arg == "-h" || arg == "--help") { usage(argv[0]); return EXIT_SUCCESS; }
-        if (arg == "--config") {
-            if (i + 1 >= argc) { spdlog::error("--config requires a path"); usage(argv[0]); return EXIT_FAILURE; }
-            config_path = argv[++i];
-            continue;
-        }
-        spdlog::error("unknown option: {}", arg);
-        usage(argv[0]);
-        return EXIT_FAILURE;
-    }
-
-    slurm_tracer::Config config;
-    if (!config_path.empty()) {
-        std::string error;
-        if (auto loaded = slurm_tracer::load_config_file(config_path, error))
-            config = std::move(*loaded);
-        else { spdlog::error("--config: {}", error); return EXIT_FAILURE; }
-    }
-    if (config.node.empty()) config.node = hostname();
-    spdlog::set_level(config.verbose ? spdlog::level::debug : spdlog::level::info);
-
-    libbpf_set_print(libbpf_print);
-    std::signal(SIGINT, on_signal);
-    std::signal(SIGTERM, on_signal);
-    std::signal(SIGHUP, on_reload_signal);   // NEW
-
-    slurm_tracer::Daemon daemon(std::move(config));
-    if (!daemon.start()) return EXIT_FAILURE;
-    return daemon.run(g_stop, g_reload);      // NEW: second flag
-}
-```
-
-Add `volatile std::sig_atomic_t g_reload = 0;` and `void on_reload_signal(int) { g_reload = 1; }` next to the existing `g_stop`/`on_signal`.
-
-### 2. `Config` gains a remembered file path
+### `Config` gains a remembered file path
 
 `src/core/config/config.h` — add one field:
 
@@ -90,7 +41,7 @@ std::string config_path; // empty = this Config has no file to reload from
 that knows the path, so it's the one place responsible for remembering it — no
 change needed in `main.cpp` beyond what §1 already does.
 
-### 3. Config diffing — new pure-logic module
+### Config diffing — new pure-logic module
 
 `ComponentConfig` has no `operator==` today and no way to enumerate its internal
 `values_` map from outside. Add to `src/core/config/config.h`/`.cpp`:
@@ -126,17 +77,7 @@ ConfigDiff diff_components(
 Implementation is a straightforward sorted-map merge-diff (both are `std::map`, so
 already key-ordered) — one pass, three buckets.
 
-### 4. `selected()` becomes reusable from both startup and reload
-
-`src/core/daemon.cpp`'s private `selected()` currently returns
-`std::vector<std::pair<std::string, ComponentConfig>>`. Change its return type to
-`std::map<std::string, ComponentConfig>` (`out.emplace(name, config)` instead of
-`emplace_back`) — both existing call sites' `for (const auto& [name, config] :
-selected(...))` loops work identically over a `map`, and `diff_components` needs
-two key-ordered containers to merge-diff. This is required for step 3 to be
-correct, not just convenient.
-
-### 5. `EventLoop::remove()` — the only way to drop one probe's ring buffer
+### `EventLoop::remove()` — the only way to drop one probe's ring buffer
 
 Confirmed hazard: `ring_buffer__add`/`__new` take a raw fd and never `dup()` it.
 `BpfProbe<Skel>::detach()` closes that fd via the skeleton's generated `__destroy`.
@@ -187,7 +128,7 @@ No hazard from bindings reordering: libbpf dispatches by fd/ctx, not position, a
 *Adding* a probe needs no new `EventLoop` capability — `ring_buffer__add` already
 works against an already-being-polled `ring_buffer*`; it isn't a startup-only call.
 
-### 6. `Pipeline::set_sinks()` — the only way to change the sink list
+### `Pipeline::set_sinks()` — the only way to change the sink list
 
 `src/core/pipeline/pipeline.h`, inlined next to the existing `set_resolver`:
 
@@ -201,7 +142,7 @@ runs between `Daemon::run()`'s loop iterations — never from inside `emit()`,
 baked in, so a sink added mid-reload simply starts receiving future batches, and one
 removed simply stops.
 
-### 7. `Daemon` — shared add/remove helpers, used by both startup and reload
+### `Daemon` — shared add/remove helpers, used by both startup and reload
 
 `src/core/daemon.h` — signature and member changes:
 
@@ -209,8 +150,6 @@ removed simply stops.
 int run(const volatile std::sig_atomic_t& stop, volatile std::sig_atomic_t& reload); // reload: non-const, cleared after each handled reload
 
 private:
-    void start_sinks();
-    void start_probes();
     void start_cgroup_watcher();
     void report_shutdown() const;
 
@@ -231,10 +170,6 @@ void Daemon::add_sink(const std::string& name, const ComponentConfig& config) {
     sinks_.push_back(std::move(sink));
     if (pipeline_) rewire_pipeline_sinks(); // null only during start(), before Pipeline exists
 }
-void Daemon::start_sinks() {
-    for (const auto& [name, config] : selected(config_.sinks, registries_.sinks))
-        add_sink(name, config);
-}
 
 void Daemon::add_probe(const std::string& name, const ComponentConfig& config) {
     auto probe = registries_.probes.create(name, config);
@@ -244,10 +179,6 @@ void Daemon::add_probe(const std::string& name, const ComponentConfig& config) {
     }
     if (!loop_.add(*probe, *pipeline_)) { probe->detach(); return; }
     probes_.push_back(std::move(probe));
-}
-void Daemon::start_probes() {
-    for (const auto& [name, config] : selected(config_.probes, registries_.probes))
-        add_probe(name, config);
 }
 
 void Daemon::rewire_pipeline_sinks() {

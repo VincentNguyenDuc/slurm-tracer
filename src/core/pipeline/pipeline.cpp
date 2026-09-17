@@ -11,9 +11,10 @@
 
 namespace slurm_tracer {
 
-Pipeline::Pipeline(Options opt, std::vector<Sink*> sinks)
+Pipeline::Pipeline(Options opt, std::vector<Sink*> sinks, CgroupResolver* resolver)
     : opt_(std::move(opt))
     , sinks_(std::move(sinks))
+    , resolver_(resolver)
     , last_flush_(std::chrono::steady_clock::now()) {
     batch_.reserve(opt_.batch_size);
 }
@@ -49,9 +50,6 @@ void Pipeline::enrich(Record& r) {
     if (r.uid)
         if (const std::string* user = lookup_user(*r.uid))
             r.user = *user;
-
-    if (resolver_ == nullptr)
-        return;
 
     if (auto attr = resolver_->resolve(r.cgroup_id, event_monotonic_ns)) {
         r.job_id = attr->job_id;

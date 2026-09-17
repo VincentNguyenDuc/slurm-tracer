@@ -25,8 +25,10 @@
 namespace {
 
 volatile std::sig_atomic_t g_stop = 0;
+volatile std::sig_atomic_t g_reload = 0;
 
-void on_signal(int) { g_stop = 1; }
+void on_stop_signal(int) { g_stop = 1; }
+void on_reload_signal(int) { g_reload = 1; }
 
 // libbpf hands us its own level per message; map it onto spdlog's rather than
 // dumping raw, unformatted text straight to stderr.
@@ -99,11 +101,12 @@ int main(int argc, char** argv) {
     spdlog::set_level(config.verbose ? spdlog::level::debug : spdlog::level::info);
 
     libbpf_set_print(libbpf_print);
-    std::signal(SIGINT, on_signal);
-    std::signal(SIGTERM, on_signal);
+    std::signal(SIGINT, on_stop_signal);
+    std::signal(SIGTERM, on_stop_signal);
+    std::signal(SIGHUP, on_reload_signal);
 
     slurm_tracer::Daemon daemon(std::move(config));
     if (!daemon.start())
         return EXIT_FAILURE;
-    return daemon.run(g_stop);
+    return daemon.run(g_stop, g_reload);
 }

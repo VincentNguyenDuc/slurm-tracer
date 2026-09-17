@@ -4,7 +4,6 @@
         "node": "c1"
     },
     "probes": {
-        "cgroup_lifecycle": {},
         "oom": {},
         "proc_lifecycle": {}
     },

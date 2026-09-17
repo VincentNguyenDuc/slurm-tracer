@@ -34,13 +34,18 @@ public:
     bool start();
 
     // Runs until `stop` becomes non-zero. Returns the process exit code.
-    int run(const volatile std::sig_atomic_t& stop);
+    int run(const volatile std::sig_atomic_t& stop, volatile std::sig_atomic_t& reload);
 
 private:
-    void start_sinks();
-    void start_probes();
-    void start_cgroup_watcher();
+    bool start_cgroup_watcher();
     void report_shutdown() const;
+
+    void reload_config();
+    void add_probe(const std::string& name, const ComponentConfig& config);
+    void remove_sink(const std::string& name);
+    void add_sink(const std::string& name, const ComponentConfig& config);
+    void wire_sinks();
+    void remove_probe(const std::string& name);
 
     Config config_;
     Registries registries_;

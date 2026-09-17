@@ -13,24 +13,6 @@ namespace {
 
 constexpr auto kPollTimeout = std::chrono::milliseconds(100);
 
-// Which probes/sinks to run: what the config names, or everything this build
-// contains when it names none. A config that lists probes/sinks is authoritative,
-// including about the ones it leaves out.
-template <typename T>
-std::vector<std::pair<std::string, ComponentConfig>> selected(
-    const std::map<std::string, ComponentConfig>& configured, const Registry<T>& registry
-) {
-    std::vector<std::pair<std::string, ComponentConfig>> out;
-    if (!configured.empty()) {
-        for (const auto& [name, config] : configured)
-            out.emplace_back(name, config);
-        return out;
-    }
-    for (const std::string& name : registry.names())
-        out.emplace_back(name, ComponentConfig{});
-    return out;
-}
-
 } // namespace
 
 Daemon::Daemon(Config config)
@@ -45,42 +27,7 @@ Daemon::~Daemon() {
         probe->detach();
 }
 
-void Daemon::start_sinks() {
-    for (const auto& [name, config] : selected(config_.sinks, registries_.sinks)) {
-        auto sink = registries_.sinks.create(name, config);
-        if (!sink) {
-            spdlog::warn("sink {}: not in this build, skipped", name);
-            continue;
-        }
-        sinks_.push_back(std::move(sink));
-    }
-}
-
-void Daemon::start_probes() {
-    for (const auto& [name, config] : selected(config_.probes, registries_.probes)) {
-        auto probe = registries_.probes.create(name, config);
-        if (!probe) {
-            spdlog::warn("probe {}: not in this build, skipped", name);
-            continue;
-        }
-
-        // Failure isolation: a probe that cannot load — missing tracepoint,
-        // verifier rejection, kernel too old — is disabled and the daemon
-        // keeps running with the rest. Clusters are heterogeneous; a node
-        // with an older kernel should lose one probe, not all observability.
-        if (!probe->open(config) || !probe->load() || !probe->attach()) {
-            spdlog::warn("probe {}: disabled", name);
-            continue;
-        }
-        if (!loop_.add(*probe, *pipeline_)) {
-            probe->detach();
-            continue;
-        }
-        probes_.push_back(std::move(probe));
-    }
-}
-
-void Daemon::start_cgroup_watcher() {
+bool Daemon::start_cgroup_watcher() {
     cgroup_watcher_ = std::make_unique<CgroupWatcher>(*resolver_);
 
     // Not failure-isolated the way an ordinary probe is: losing this feed
@@ -90,35 +37,38 @@ void Daemon::start_cgroup_watcher() {
     // back to whatever it saw in its startup scan, which is degraded, not
     // fatal.
     if (!cgroup_watcher_->open({}) || !cgroup_watcher_->load() || !cgroup_watcher_->attach()) {
-        spdlog::warn("cgroup watcher: failed to attach -- every record will now be unattributed");
+        spdlog::warn("cgroup watcher: failed to attach");
         cgroup_watcher_.reset();
-        return;
+        return false;
     }
     if (!loop_.add(*cgroup_watcher_, *pipeline_)) {
         cgroup_watcher_->detach();
         cgroup_watcher_.reset();
+        return false;
     }
+
+    return true;
 }
 
 bool Daemon::start() {
-    // Attribution first: if the cgroup root is wrong we want to say so before
-    // loading anything into the kernel.
+
     if (auto root = discover_cgroup_root(config_.cgroup_root)) {
-        auto candidate = std::make_unique<CgroupResolver>(*root);
-        if (candidate->start()) {
-            spdlog::info(
-                "attribution: cgroup root {}, {} cgroups known at startup", *root, candidate->size()
-            );
-            resolver_ = std::move(candidate);
-        }
+        resolver_ = std::make_unique<CgroupResolver>(*root);
+        spdlog::info(
+            "attribution: cgroup root {}, {} cgroups known at startup", *root, resolver_->size()
+        );
     } else {
-        // Fatal, not degraded: run() below exits as soon as it sees resolver_
-        // still null. The deployment is responsible for not starting this
-        // daemon before slurmd has created the cgroup scope.
         spdlog::error("attribution: no Slurm cgroup root found; refusing to start");
+        return false;
     }
 
-    start_sinks();
+    if (!resolver_->start()) {
+        spdlog::error("attribution: starting resolver failed");
+        return false;
+    }
+
+    for (const auto& [name, config] : config_.sinks)
+        add_sink(name, config);
     if (sinks_.empty()) {
         spdlog::error("no sinks configured; records would go nowhere");
         return false;
@@ -135,13 +85,13 @@ bool Daemon::start() {
     popt.batch_size = config_.batch_size;
     popt.flush_interval = config_.flush_interval;
 
-    pipeline_ = std::make_unique<Pipeline>(popt, sink_ptrs);
-    pipeline_->set_resolver(resolver_.get());
+    pipeline_ = std::make_unique<Pipeline>(popt, sink_ptrs, resolver_.get());
+    if (!start_cgroup_watcher())
+        return false;
 
-    if (resolver_)
-        start_cgroup_watcher();
+    for (const auto& [name, config] : config_.probes)
+        add_probe(name, config);
 
-    start_probes();
     if (probes_.empty()) {
         spdlog::error("no probes running; nothing to collect");
         return false;
@@ -149,7 +99,7 @@ bool Daemon::start() {
     return true;
 }
 
-int Daemon::run(const volatile std::sig_atomic_t& stop) {
+int Daemon::run(const volatile std::sig_atomic_t& stop, volatile std::sig_atomic_t& reload) {
     spdlog::info(
         "attached; streaming records for cluster={} node={} (Ctrl-C to stop)",
         config_.cluster,
@@ -164,15 +114,13 @@ int Daemon::run(const volatile std::sig_atomic_t& stop) {
             break;
         }
 
-        if (!resolver_) {
-            rc = EXIT_FAILURE;
-            break;
-        }
-
         resolver_->tick();
-
-        // A partial batch must not sit indefinitely on a quiet node.
         pipeline_->tick(std::chrono::steady_clock::now());
+
+        if (reload != 0) {
+            reload = 0;
+            reload_config();
+        }
     }
 
     pipeline_->flush();
@@ -199,5 +147,42 @@ void Daemon::report_shutdown() const {
     msg += fmt::format(", dropped batches={}", dropped);
     spdlog::info(msg);
 }
+
+void Daemon::reload_config() {}
+
+void Daemon::add_probe(const std::string& name, const ComponentConfig& config) {
+    auto probe = registries_.probes.create(name, config);
+    if (!probe) {
+        spdlog::warn("probe {}: not in this build, skipped", name);
+        return;
+    }
+
+    if (!probe->open(config) || !probe->load() || !probe->attach()) {
+        spdlog::warn("probe {}: disabled", name);
+        return;
+    }
+    if (!loop_.add(*probe, *pipeline_)) {
+        probe->detach();
+        return;
+    }
+
+    probes_.push_back(std::move(probe));
+    return;
+}
+
+void Daemon::remove_sink(const std::string& name) {}
+
+void Daemon::add_sink(const std::string& name, const ComponentConfig& config) {
+    auto sink = registries_.sinks.create(name, config);
+    if (!sink) {
+        spdlog::warn("sink {}: not in this build, skipped", name);
+        return;
+    }
+    sinks_.push_back(std::move(sink));
+}
+
+void Daemon::wire_sinks() {}
+
+void Daemon::remove_probe(const std::string& name) {}
 
 } // namespace slurm_tracer
