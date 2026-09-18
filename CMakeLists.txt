@@ -14,6 +14,10 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g -fno-omit-frame-pointer")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Probes and sinks are dlopen'd plugin .so files (cmake/StPlugin.cmake) that
+# link st_core in, so everything below has to be position-independent.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 include(BpfProgram)
 include(StPlugin)

@@ -151,15 +151,54 @@ public:
 };
 ```
 
-A probe registers itself by name from its own `.cpp` (`r.probes.add("name", ...)`,
-called from a generated manifest that names every plugin the build contains) — so
-adding a probe is two new files, one `add_st_probe()` line in the probe's own
-`CMakeLists.txt`, and no edits to core. The manifest is generated rather than
-built from a static initialiser because a static initialiser inside a static
-library can get dropped silently by the linker — no compile error, no link
-error, the plugin simply never appears at runtime — whereas naming
-`register_<name>()` as a real undefined symbol in generated code obliges the
-linker to pull the plugin's translation unit in.
+A probe registers itself by name from its own `.cpp` (`r.add("name", ...)`, from
+the single `extern "C" st_register_probe` entry point every probe plugin
+exports) — so adding a probe is two new files, one `add_st_probe()` line in the
+probe's own `CMakeLists.txt`, and no edits to core.
+
+**A config entry is an instance, not a plugin.** The key in `"probes"` /
+`"sinks"` is an instance id, and an optional `"plugin"` setting says which
+`.so` to build it from, defaulting to the id — so `"oom": {}` still means one
+instance of `oom`, while
+
+```json
+"sinks": {
+  "http_primary": { "plugin": "http", "endpoint": "http://a/v1" },
+  "http_backup":  { "plugin": "http", "endpoint": "http://b/v1" }
+}
+```
+
+runs the same plugin twice against different endpoints. dlopen refcounts the
+shared mapping, so two instances are two balanced load/unload pairs over one
+file. The id, not the plugin's own `name()`, is what identifies a component in
+a reload diff and in log lines — and what the core stamps into a record's
+`probe` field, so two instances of one probe plugin stay distinguishable
+downstream. Changing an instance's `"plugin"` is the one settings change a
+reload does act on: it now names different code, so the instance is removed
+and added back.
+
+**Plugins are not linked into the daemon.** Each builds into its own
+`plugins/probes/libst_probe_<name>.so` (`plugins/sinks/libst_sink_<name>.so`
+for a sink), and the daemon `dlopen`s one only once a config names it, from
+`plugin_dir`. Every plugin exports the *same* entry point symbol, which is
+safe precisely because they are opened one at a time with `RTLD_LOCAL` rather
+than linked together. `RTLD_NOW` means a plugin with an unresolved symbol
+costs one disabled component at load time instead of a crash mid-poll.
+
+That is also what makes a probe replaceable on a running node: a reload that
+drops a name `dlclose`s it, and the next reload that names it again re-reads
+whatever `.so` is on disk at that moment (verified: a same-inode, in-place
+overwrite is picked up, not served from a stale mapping). So rolling out a
+fixed probe is replacing one file and taking its name out of the config and
+back in — no new daemon build, no restart. A component whose name never leaves
+the config keeps running the mapping it already had; the reload diff is by
+name, nothing more (§ config reload).
+
+The ordering rule this rests on: a component is destroyed *before* its plugin
+is unmapped. Its destructor, vtable and factory lambda all live in that
+mapping — which is why `PluginLoader` scopes the registry it fills to before
+any `dlclose`, and why `Daemon` declares its loader ahead of the components it
+produces.
 
 **Failure isolation is a requirement, not a nicety.** A probe that fails to load —
 missing tracepoint, verifier rejection, kernel too old — is disabled with a warning
@@ -195,7 +234,9 @@ the spec slightly:
 {
   "node": {
     "cluster": "prod",
-    "flush_interval": "10s"
+    "flush_interval": "10s",
+    // Where the probe/sink .so files live; required, since nothing is linked in.
+    "plugin_dir": "/usr/lib/slurm-tracer/plugins"
   },
 
   "slurm": {
@@ -212,6 +253,11 @@ the spec slightly:
     "http": {
       "endpoint": "http://ingest.internal:8080/v1/telemetry",
       "timeout": "5s"
+    },
+    // Same plugin again, second instance, its own endpoint.
+    "http_audit": {
+      "plugin": "http",
+      "endpoint": "http://audit.internal:8080/v1/telemetry"
     }
   }
 }
@@ -220,18 +266,25 @@ the spec slightly:
 A `"probes"`/`"sinks"` member's mere presence is what turns it on — `"enabled":
 false` is the one key every member understands, letting a node disable
 something by name without deleting the object (and its other settings)
-outright. Naming no `"probes"` object at all, not even one holding a disabled
-member, means every probe the build contains; the same for `"sinks"`. That
-"everything, until you name one thing" default is why `"proc_lifecycle": {}`
-with nothing inside it is enough to opt in — the reverse of `"enabled": false`,
-not its counterpart.
+outright. There is no implicit "everything" default: a probe or sink this node
+does not name is never loaded, so a config that names none starts nothing and
+the daemon refuses to run rather than collecting silently by accident.
 
-Beyond that one shared key, a member's contents belong entirely to its plugin
-(`ComponentConfig`) — the loader stores whatever it finds and never interprets
-it, so a plugin can add a setting without this file's format changing.
+Each member is one *instance*: the key is its id, `"plugin"` picks the `.so`
+and defaults to that id (§5). Beyond those two shared keys, a member's contents
+belong entirely to its plugin (`ComponentConfig`) — the loader stores whatever
+it finds and never interprets it, so a plugin can add a setting without this
+file's format changing.
 
-Reload on `SIGHUP` — so probes can attach and detach without restarting the
-daemon and losing the warm attribution cache — is still roadmap, not built.
+**Reload on `SIGHUP`** re-reads this file and moves the running set to match
+it, so probes and sinks attach and detach without restarting the daemon and
+losing the warm attribution cache. The diff is by instance id: ids that left
+are removed, ids that arrived are added, ids that stayed keep running
+untouched — a changed setting is not picked up, since no plugin can
+reconfigure in place, with the one exception of `"plugin"` itself (§5).
+Anything outside `"probes"`/`"sinks"` — `node`, `cluster`, `cgroup_root`,
+`plugin_dir`, `batch_size`, `flush_interval`, `verbose` — has no live path at
+all, so a file that changes one is rejected whole rather than applied in part.
 
 ## 8. Sinks
 

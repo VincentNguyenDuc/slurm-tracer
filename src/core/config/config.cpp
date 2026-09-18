@@ -89,27 +89,44 @@ std::chrono::milliseconds ComponentConfig::get_duration(
     return parse_duration_ms(it->second, parsed) ? parsed : fallback;
 }
 
+std::string plugin_of(const std::string& id, const ComponentConfig& config) {
+    return config.get("plugin", id);
+}
+
+namespace {
+
+// Fills `removed`/`added` for one kind: ids that dropped out, ids that are
+// new, and ids that stayed but now name a different plugin (which is both).
+void diff_components(
+    const std::map<std::string, ComponentConfig>& current,
+    const std::map<std::string, ComponentConfig>& next,
+    std::vector<std::string>& removed,
+    std::vector<std::string>& added
+) {
+    for (const auto& [id, config] : current) {
+        const auto it = next.find(id);
+        if (it == next.end() || plugin_of(id, config) != plugin_of(id, it->second))
+            removed.push_back(id);
+    }
+    for (const auto& [id, config] : next) {
+        const auto it = current.find(id);
+        if (it == current.end() || plugin_of(id, config) != plugin_of(id, it->second))
+            added.push_back(id);
+    }
+}
+
+} // namespace
+
 std::optional<ConfigDiff> diff_for_reload(const Config& current, const Config& next) {
     if (next.cluster != current.cluster || next.node != current.node ||
-        next.cgroup_root != current.cgroup_root || next.batch_size != current.batch_size ||
-        next.flush_interval != current.flush_interval || next.verbose != current.verbose)
+        next.cgroup_root != current.cgroup_root || next.plugin_dir != current.plugin_dir ||
+        next.batch_size != current.batch_size || next.flush_interval != current.flush_interval ||
+        next.verbose != current.verbose)
         return std::nullopt;
 
     ConfigDiff diff;
-    for (const auto& [name, unused] : current.probes)
-        if (!next.probes.count(name))
-            diff.removed_probes.push_back(name);
-    for (const auto& [name, unused] : next.probes)
-        if (!current.probes.count(name))
-            diff.added_probes.push_back(name);
-
-    for (const auto& [name, unused] : current.sinks)
-        if (!next.sinks.count(name))
-            diff.removed_sinks.push_back(name);
-    for (const auto& [name, unused] : next.sinks)
-        if (!current.sinks.count(name))
-            diff.added_sinks.push_back(name);
-
+    diff_components(current.probes, next.probes, diff.removed_probes, diff.added_probes);
+    diff_components(current.sinks, next.sinks, diff.removed_sinks, diff.added_sinks);
     return diff;
 }
 

@@ -8,6 +8,11 @@
 # it relies on alphabetical scenario ordering (run.sh) to sort after
 # oom.sh/proc_lifecycle.sh.
 #
+# Since probes and sinks are dlopen'd plugins (core/plugin_loader.h), this
+# also covers the plugin lifecycle on a real node: the dropped two are
+# unloaded on the first reload and loaded again from their .so files on the
+# restore, while the two that stay named keep the mappings they already had.
+#
 # conf/tracer_c1.json is bind-mounted read-only into the c1 container, but
 # it's an ordinary host file underneath that mount, so the host side (here)
 # can still rewrite it -- exactly what an operator editing a node's config
@@ -40,9 +45,16 @@ wait_for_reload() {
 }
 
 log "dropping proc_lifecycle probe and http sink from c1's config, then sending SIGHUP"
+# plugin_dir has to match what c1 started with: diff_for_reload rejects a
+# reload outright if it changes, so dropping it here would abort the whole
+# reload instead of removing anything.
 cat > "$CONF" <<'EOF'
 {
-    "node": { "cluster": "docker-test", "node": "c1" },
+    "node": {
+        "cluster": "docker-test",
+        "node": "c1",
+        "plugin_dir": "/workspace/build/docker/plugins"
+    },
     "probes": { "oom": {} },
     "sinks": { "stdout_json": {} }
 }

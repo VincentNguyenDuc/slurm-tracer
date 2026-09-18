@@ -28,6 +28,9 @@ Slurm, munge) lives in the image.
 2. Builds `slurm-tracer` via `docker compose run --rm builder`, into
    `build/docker` on the bind-mounted repo -- not one of the `debug`/`release`
    presets, so this never collides with a developer's own Linux build tree.
+   That build produces the daemon plus its probe/sink plugins as separate
+   `.so` files under `build/docker/plugins/`, which is what both workers'
+   configs point `plugin_dir` at.
    This has to happen in a *running* container, not during `docker compose
    build`: the BPF build reads the running kernel's BTF
    (`cmake/BpfProgram.cmake`), which an image build has no access to. See
@@ -67,7 +70,9 @@ Slurm, munge) lives in the image.
      then submits an OOM job to show the surviving `oom` probe/`stdout_json`
      sink still work. Restores c1's original config (and reloads it back)
      when it's done, so it must run last -- it relies on the alphabetical
-     `scenarios/*.sh` ordering to sort after the other two.
+     `scenarios/*.sh` ordering to sort after the other two. This is also the
+     plugin lifecycle test: the two dropped components have their `.so` files
+     unloaded and then loaded again from disk on the restore.
 
    Each scenario ends by calling `record_scenario` (`scenarios/lib.sh`),
    which snapshots its job id, the raw command output, and the *current*
@@ -98,7 +103,8 @@ conf/slurm.conf            Minimal cluster config; node names match the compose
 conf/cgroup.conf           cgroup/v2, IgnoreSystemd=yes.
 conf/tracer_c1.json,       slurm-tracer's own config, one per worker (same
 conf/tracer_c2.json        apart from "node"): stdout_json + http, http
-                           pointed at collector.
+                           pointed at collector, plugin_dir pointed at
+                           build/docker/plugins.
 scripts/build.sh           Builds slurm-tracer into build/docker.
 scripts/common.sh          setup_munge, setup_cgroup_delegation, wait_for_binary.
 scripts/collector.py       Stand-in http sink ingest endpoint; appends every

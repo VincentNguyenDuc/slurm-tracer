@@ -1,7 +1,8 @@
 {
     "node": {
         "cluster": "docker-test",
-        "node": "c2"
+        "node": "c2",
+        "plugin_dir": "/workspace/build/docker/plugins"
     },
     "probes": {
         "oom": {},

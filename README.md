@@ -36,11 +36,19 @@ the directory split, is what keeps core testable without CAP_BPF or a kernel.
 2. Give it its own `CMakeLists.txt` (`add_st_probe(<name> SOURCES probe.cpp BPF
    <name>.bpf.c)`) and one `add_subdirectory(probes/<name>)` line in
    [src/CMakeLists.txt](src/CMakeLists.txt).
-3. Register it from `probe.cpp` with `register_<name>(Registries&)`; the build
-   generates the manifest that calls it, so nothing in core ever names a probe.
+3. Register it from `probe.cpp` by exporting
+   `extern "C" void st_register_probe(Registry<Probe>&)`, the one symbol every
+   probe plugin exports. The build turns the directory into
+   `plugins/probes/libst_probe_<name>.so`, which the daemon `dlopen()s` the
+   first time a config names it — so nothing in core ever names a probe, and
+   nothing links one in.
 
 No other file changes — that's the plugin contract, detailed further in
-[docs/DESIGN.md](docs/DESIGN.md). `proc_lifecycle` and `oom` are the
+[docs/DESIGN.md](docs/DESIGN.md). A config entry names an *instance*, not a
+plugin: the key is its id and an optional `"plugin"` setting picks the `.so`
+(defaulting to the id), so one plugin can run several times with different
+settings and each instance is identified — in logs, in a reload diff, and in
+a record's `probe` field — by its own id. `proc_lifecycle` and `oom` are the
 event-driven telemetry probes that exist today. The cgroup watcher is not one
 of them: attribution is mandatory, not a metric a cluster can opt out of, so
 it is built and wired directly rather than through this plugin contract.

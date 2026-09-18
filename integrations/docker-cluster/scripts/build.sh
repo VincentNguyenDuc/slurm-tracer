@@ -12,4 +12,4 @@ set -euo pipefail
 cd /workspace
 cmake -S . -B build/docker -DCMAKE_BUILD_TYPE=Release -DSLURM_TRACER_BUILD_TESTS=OFF
 cmake --build build/docker -j"$(nproc)"
-echo "build.sh: built build/docker/slurm-tracer"
+echo "build.sh: built build/docker/slurm-tracer and build/docker/plugins/"

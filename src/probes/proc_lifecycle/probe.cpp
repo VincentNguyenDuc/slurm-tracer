@@ -46,9 +46,9 @@ public:
 
 } // namespace
 
-// Called by the generated plugin manifest.
-void register_proc_lifecycle(Registries& r) {
-    r.probes.add("proc_lifecycle", [](const ComponentConfig&) -> std::unique_ptr<Probe> {
+// This plugin's one exported symbol, called by PluginLoader after dlopen.
+extern "C" void st_register_probe(Registry<Probe>& r) {
+    r.add("proc_lifecycle", [](const ComponentConfig&) -> std::unique_ptr<Probe> {
         return std::make_unique<ProcLifecycleProbe>();
     });
 }

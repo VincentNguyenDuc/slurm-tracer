@@ -46,9 +46,9 @@ public:
 
 } // namespace
 
-// Called by the generated plugin manifest.
-void register_oom(Registries& r) {
-    r.probes.add("oom", [](const ComponentConfig&) -> std::unique_ptr<Probe> {
+// This plugin's one exported symbol, called by PluginLoader after dlopen.
+extern "C" void st_register_probe(Registry<Probe>& r) {
+    r.add("oom", [](const ComponentConfig&) -> std::unique_ptr<Probe> {
         return std::make_unique<OomProbe>();
     });
 }

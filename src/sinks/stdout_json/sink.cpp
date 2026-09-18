@@ -82,10 +82,9 @@ void StdoutJsonSink::run() {
     drained_cv_.notify_all();
 }
 
-// Called by the generated plugin manifest. Naming it here and calling it
-// there is what forces this translation unit into the link.
-void register_stdout_json(Registries& r) {
-    r.sinks.add("stdout_json", [](const ComponentConfig& config) -> std::unique_ptr<Sink> {
+// This plugin's one exported symbol, called by PluginLoader after dlopen.
+extern "C" void st_register_sink(Registry<Sink>& r) {
+    r.add("stdout_json", [](const ComponentConfig& config) -> std::unique_ptr<Sink> {
         return std::make_unique<StdoutJsonSink>(
             static_cast<size_t>(config.get_uint("max_queued_batches", 1024)), stdout
         );

@@ -15,8 +15,8 @@
 #include "core/config/config.h"
 #include "core/event_loop.h"
 #include "core/pipeline/pipeline.h"
+#include "core/plugin_loader.h"
 #include "core/probe/probe.h"
-#include "core/registry.h"
 #include "core/sink/sink.h"
 
 namespace slurm_tracer {
@@ -45,20 +45,35 @@ private:
     void report_shutdown() const;
 
     void reload_config();
-    void add_probe(const std::string& name, const ComponentConfig& config);
-    void remove_sink(const std::string& name);
-    void add_sink(const std::string& name, const ComponentConfig& config);
+    void add_probe(const std::string& id, const ComponentConfig& config);
+    void remove_sink(const std::string& id);
+    void add_sink(const std::string& id, const ComponentConfig& config);
     void wire_sinks();
-    void remove_probe(const std::string& name);
+    void remove_probe(const std::string& id);
+
+    // What a config entry became. The id is the daemon's, not the plugin's:
+    // a plugin's own name() is its type ("http"), which two instances of it
+    // share, so identity has to be tracked out here.
+    struct LoadedSink {
+        std::string id;
+        std::unique_ptr<Sink> sink;
+    };
+    struct LoadedProbe {
+        std::string id;
+        std::unique_ptr<Probe> probe;
+        // Heap-held for a stable address: the event loop keeps a pointer to
+        // it, which a vector reallocation must not invalidate.
+        std::unique_ptr<RecordEmitter> emitter;
+    };
 
     Config config_;
     std::string config_path_;
-    Registries registries_;
 
+    PluginLoader loader_;
     std::unique_ptr<CgroupResolver> resolver_;
     std::unique_ptr<CgroupWatcher> cgroup_watcher_;
-    std::vector<std::unique_ptr<Sink>> sinks_;
-    std::vector<std::unique_ptr<Probe>> probes_;
+    std::vector<LoadedSink> sinks_;
+    std::vector<LoadedProbe> probes_;
     std::unique_ptr<Pipeline> pipeline_;
     EventLoop loop_;
 };

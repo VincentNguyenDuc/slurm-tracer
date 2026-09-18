@@ -275,9 +275,9 @@ void HttpSink::run() {
     drained_cv_.notify_all();
 }
 
-// Called by the generated plugin manifest.
-void register_http(Registries& r) {
-    r.sinks.add("http", [](const ComponentConfig& config) -> std::unique_ptr<Sink> {
+// This plugin's one exported symbol, called by PluginLoader after dlopen.
+extern "C" void st_register_sink(Registry<Sink>& r) {
+    r.add("http", [](const ComponentConfig& config) -> std::unique_ptr<Sink> {
         const std::string endpoint = config.get("endpoint", "");
         const auto parsed = parse_http_endpoint(endpoint);
         if (!parsed) {

@@ -126,6 +126,8 @@ std::optional<Config> load_config_file(const std::string& path, std::string& err
                         config.cluster = v.get<std::string>();
                     else if (key == "node")
                         config.node = v.get<std::string>();
+                    else if (key == "plugin_dir")
+                        config.plugin_dir = v.get<std::string>();
                     else if (key == "batch_size")
                         config.batch_size = static_cast<size_t>(
                             one_shot(stringify(v)).get_uint("v", config.batch_size)

@@ -6,9 +6,9 @@
 
 namespace slurm_tracer {
 
-// Called by the generated plugin manifest.
-void register_null(Registries& r) {
-    r.sinks.add("null", [](const ComponentConfig&) -> std::unique_ptr<Sink> {
+// This plugin's one exported symbol, called by PluginLoader after dlopen.
+extern "C" void st_register_sink(Registry<Sink>& r) {
+    r.add("null", [](const ComponentConfig&) -> std::unique_ptr<Sink> {
         return std::make_unique<NullSink>();
     });
 }
