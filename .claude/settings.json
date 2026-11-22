@@ -1,0 +1,11 @@
+{
+  "extraKnownMarketplaces": {
+    "claude-tools": {
+      "source": { "source": "github", "repo": "VincentNguyenDuc/claude-tools" }
+    }
+  },
+  "enabledPlugins": {
+    "git@claude-tools": true,
+    "dev@claude-tools": true
+  }
+}
